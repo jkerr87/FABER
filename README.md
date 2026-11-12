@@ -35,11 +35,11 @@ Each command should return a valid `.m` file path. If it reports a function is n
 1. Clone/download the repository:
 
    ```bash
-   git clone https://github.com/jkerr87/ASMAD.git
-   cd ASMAD
+   git clone https://github.com/jkerr87/FABER.git
+   cd FABER
    ```
 
-2. Open MATLAB and set **Current Folder** to the cloned `ASMAD` root.
+2. Open MATLAB and set **Current Folder** to the cloned `FABER` root.
 3. Place the required external helper folders where the script expects them, or adjust its `addpath` statements. To make the checked-in folders available recursively, you can run:
 
    ```matlab
@@ -49,11 +49,11 @@ Each command should return a valid `.m` file path. If it reports a function is n
    % addpath(genpath('C:/path/to/PM_V2'));
    ```
 
-4. Edit **Section 1 — Constants and Mission Inputs** of `MA_deltav_v2.m` and the RPO settings further down the script. In particular, select the intended `structureType` and make sure its configuration script exists.
+4. Edit **Section 1 — Constants and Mission Inputs** of `MA_deltav.m` and the RPO settings further down the script. In particular, select the intended `structureType` and make sure its configuration script exists.
 5. Run in the MATLAB Command Window:
 
    ```matlab
-   MA_deltav_v2
+   MA_deltav
    ```
 
    Or open the script in the MATLAB Editor and click **Run**. `clear; clc; close all;` at the start resets the workspace, command window, and open figures.
@@ -174,6 +174,6 @@ The final section runs an RPO Monte Carlo study via `ASV_RPO_MonteCarlo`, analyz
 
 ## 7. Repository
 
-Source: https://github.com/jkerr87/ASMAD
+Source: https://github.com/jkerr87/FABER
 
 For traceability, record the selected structure, orbit settings, MATLAB version and Git commit hash with every published result.
