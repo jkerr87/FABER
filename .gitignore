@@ -1,0 +1,36 @@
+# ==================================================
+# Generated results
+# ==================================================
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+*.csv
+*.xlsx
+*.xls
+*.fig
+
+# MATLAB temporary and backup files
+*.asv
+*.m~
+*.autosave
+
+# MATLAB generated folders
+slprj/
+codegen/
+*.slxc
+
+# Monte Carlo and simulation outputs
+ASV_RPO_MC_results/
+results/
+outputs/
+plots/
+
+# Python temporary files (if applicable)
+__pycache__/
+*.pyc
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -149,6 +149,8 @@ cfg.hold2_min = [5 45];
 % FINAL APPROACH
 cfg.final_min = [5 30];
 
+% Minimum duration of each individual HCW transfer [s]
+cfg.minTransferTime_s = 120;
 
 %% ================================================================
 % 7. NUMBER OF MANEUVERS
