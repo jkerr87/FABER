@@ -1,248 +1,190 @@
 
 function cfg = ASV_RPO_MC_config()
 % ASV_RPO_MC_CONFIG
-% FABER Taxi - Proximity Operations Monte Carlo
+% FABER Taxi - Phase A RPO Monte Carlo
 %
-% Preliminary literature-informed design bounds.
-% These are NOT validated mission requirements.
+% Far-field rendezvous ends at approximately 2 km.
+% The following seven phases are modelled:
 %
-% Reference missions:
-% - ESA ATV rendezvous operations
-% - Martinez et al. (2023), autonomous RPO GNC
-% - Hinkel et al. (2014), NASA rendezvous strategy
+% 1. Homing 1:      ~2 km -> HP1
+% 2. Holding 1:     HP1
+% 3. Homing 2:      HP1 -> HP2
+% 4. Holding 2:     HP2
+% 5. Closing:       HP2 -> HP3
+% 6. Holding 3:     HP3
+% 7. Final approach: HP3 -> capture/docking
 %
-% All sampled design variables follow uniform distributions.
+% All distance and speed bounds are preliminary.
+% Units: m, m/s, min unless otherwise indicated.
 
-%% ================================================================
-% 1. MONTE CARLO SETTINGS
-% ================================================================
+%% 1. MONTE CARLO
 
-% Number of accepted client + host retrieval cycles
-% Start small for validation; increase after convergence testing.
 cfg.N = 100;
-
-% Reproducibility
 cfg.seed = 42;
+cfg.maxAttemptsFactor = 30;
+cfg.nTrajectorySamples = 101;
 
-% Maximum attempts = N * maxAttemptsFactor
-cfg.maxAttemptsFactor = 3;
-
-% Samples used to check each HCW trajectory
-cfg.nTrajectorySamples = 25;
-
-% Results
 cfg.outputFolder = 'ASV_RPO_MC_results';
-cfg.makePlots = true;
-cfg.saveCSV = true;
+cfg.makePlots = false;
+cfg.saveCSV = false;
 
+%% 2. OPTIMIZATION SETTINGS (FUTURE USE)
 
-%% ================================================================
-% 2. OPTIMIZATION SETTINGS
-% ================================================================
-
-% Optimization objective:
-% 'dv'       = minimum feasible Delta V
-% 'tof'      = minimum feasible time of flight
-% 'weighted' = weighted Delta V / TOF compromise
+% Current implementation samples feasible trajectories.
+% It does not perform objective-based optimization.
 
 cfg.objective = 'dv';
-
-% Available closing / final approach geometries
 cfg.methods = {'Vbar'};
-
-% Random candidate designs evaluated per approach
 cfg.candidatesPerLeg = 3;
 
-% Weighted objective parameters
 cfg.weightDV = 0.5;
 cfg.weightTOF = 0.5;
-
-% Normalization values (illustrative)
 cfg.refDV_mps = 2.0;
 cfg.refTOF_min = 400;
 
+%% 3. ORBIT
 
-%% ================================================================
-% 3. ORBIT PARAMETERS
-% ================================================================
+cfg.mu_km3s2 = 398600.4418;
+cfg.Re_km = 6378.1363;
+cfg.h_km = 457.25;
 
-% Can be overwritten by MA_deltav_v2.m
+%% 4. INITIAL RELATIVE STATES
 
-cfg.mu_km3s2 = 398600.4418;   % [km^3/s^2]
-cfg.Re_km = 6378.1363;       % [km]
-cfg.h_km = 457.25;           % [km]
-
-
-%% ================================================================
-% 4. INITIAL RELATIVE STATES
-% ================================================================
-
-% LVLH state:
-% [x;y;z;vx;vy;vz]
-%
-% x = radial outward
-% y = along-track
-% z = cross-track
-%
-% Position [m], velocity [m/s]
+% Far-field to RPO handover at approximately 2 km.
+% LVLH: [x;y;z;vx;vy;vz]
+% Position in m, velocity in m/s.
 
 cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
+cfg.x0_host   = [50;-2000;20;0.01;0.04;-0.01];
 
-cfg.x0_host = [50;-2000;20;0.01;0.04;-0.01];
+% Initial state dispersions
+cfg.dx0_client = [100;300;100;0.05;0.05;0.05];
+cfg.dx0_host   = [100;300;100;0.05;0.05;0.05];
 
-% INITIAL CONDITION VARIATIONS
+%% 5. HOLDING POINT GEOMETRY
 
-% Maximum deviations from nominal initial state
-% [x; y; z; vx; vy; vz]
-% Position [m], velocity [m/s]
+% Keep your original waypoint distances.
 
-cfg.dx0_client = [100; 300; 100; 0.05; 0.05; 0.05];
+cfg.hp1_m = [800 1200];  % HP1, approximately 1 km
+cfg.hp2_m = [350 450];
+cfg.hp3_m = [20 20];     % HP3, terminal gate
+cfg.final_m = [5 5];    % Capture/docking standoff
 
-cfg.dx0_host = [100; 300; 100; 0.05; 0.05; 0.05];
-
-
-%% ================================================================
-% 5. MANEUVER GEOMETRY [m]
-% ================================================================
-
-% First holding point
-% Literature reference: SENER 1000 m waypoint
-cfg.hp1_m = [800 1200];
-
-% Second holding point
-% References: NASA 100 m, SENER R-bar 200 m
-%
-% Current code requires HP2 inside the 300 m AZ.
-cfg.hp2_m = [100 250];
-
-% Final robotic capture standoff
-% FABER-specific preliminary assumption
-cfg.final_m = [5 5];
-
-% Approach Zone boundary
+% Safety geometry
 cfg.AZ_m = 300;
-
-% Keep-Out Zone radius
-% Preliminary assumption; refine using target dimensions,
-% navigation uncertainties and collision-clearance requirements.
 cfg.KOZ_m = 30;
-
-% Final approach corridor half-width
-% Preliminary assumption
 cfg.corridorHalfWidth_m = 5;
-
 cfg.maxClosingExcursionFactor = 1.50;
 
+%% 6. MANEUVER TIME BOUNDS [min]
 
-%% ================================================================
-% 6. MANEUVER TIME BOUNDS [min]
-% ================================================================
-
-% Literature-informed exploratory bounds.
-% References include ESA ATV operational timelines.
-%
-% Actual minimum/maximum values are design assumptions,
-% not directly published operational limits.
-
-% HOMING
+% HOMING 1: approximately 2 km -> HP1
 cfg.homing_min = [30 100];
 
 % HOLDING POINT 1
 cfg.hold1_min = [10 60];
 
-% CLOSING
+% HOMING 2: HP1 -> HP2
+%
+% Existing Monte Carlo internal name: closing_min
 cfg.closing_min = [20 130];
 
 % HOLDING POINT 2
 cfg.hold2_min = [5 45];
 
-% FINAL APPROACH
+% CLOSING: HP2 -> HP3
+%
+% Existing Monte Carlo internal name: controlled_min
+cfg.controlled_min = [10 70];
+
+% HOLDING POINT 3
+cfg.hold3_min = [5 15];
+
+% FINAL APPROACH: HP3 -> 5 m
 cfg.final_min = [5 30];
 
-% Minimum duration of each individual HCW transfer [s]
+% Minimum transfer duration per HCW arc [s]
 cfg.minTransferTime_s = 120;
 
-%% ================================================================
-% 7. NUMBER OF MANEUVERS
-% ================================================================
+%% 7. NUMBER OF HCW ARCS
 
-% Current Monte Carlo implementation supports:
-% - One homing transfer
-% - One closing transfer
-% - One final approach
+% Exactly TWO homing arcs in total:
 %
-% ATV multi-maneuver architecture is reserved for future work.
+% Arc 1: initial state -> HP1
+% Arc 2: HP1 -> HP2
 %
-% These variables are descriptive only and are NOT currently
-% used by ASV_RPO_MonteCarlo.m.
+% One HCW transfer in each phase.
+% No random intermediate HCW waypoints for now.
 
-cfg.N_homing = [1 4];
-cfg.N_closing = [1 4];
+cfg.N_homing = [1 1];
 
+% Legacy internal name for the SECOND homing arc.
+cfg.N_closing = [1 1];
 
-%% ================================================================
-% 8. SAFETY AND FEASIBILITY CONSTRAINTS
-% ================================================================
+%% 8. RELATIVE VELOCITY LIMITS
 
-% Global relative-speed limit
-% Preliminary sensitivity case inspired by NASA speed gates.
+% Maximum total LVLH relative-speed magnitude.
+% Preliminary literature-informed screening limits.
+
+cfg.maxSpeed_mps = 1.0;
+
+% HOMING 1: 2 km -> HP1
+cfg.maxSpeed_homing_mps = 1.0;
+
+% HOMING 2: HP1 -> HP2
 %
-% NOTE: The published reference uses distance-dependent limits.
-% The existing code applies this one value to every trajectory.
+% Legacy internal name: maxSpeed_closing_mps
+cfg.maxSpeed_closing_mps = 1.0;
 
-cfg.maxSpeed_mps = 10.0;       % [m/s]
+% CLOSING: HP2 -> HP3
+%
+% Legacy internal name: maxSpeed_controlled_mps
+cfg.maxSpeed_controlled_mps = 0.3;
 
-% Distance/phase-dependent speed limits [m/s]
-cfg.maxSpeed_homing_mps = 25.0;
-cfg.maxSpeed_closing_mps = 10.0;
-cfg.maxSpeed_final_mps = 10.0;
+% FINAL APPROACH: HP3 -> 5 m
+cfg.maxSpeed_final_mps = 0.1;
 
-% Maximum acceleration for continuous final approach
-% Unlimited until Taxi thruster performance is available.
+%% 9. PROPULSION CONSTRAINTS
+
+% Deferred until propulsion preliminary sizing.
+
 cfg.maxPeakAccel_mps2 = inf;
-
-% Maximum Delta V for a complete client + host RPO cycle
-% Unlimited until propulsion allocation is established.
 cfg.maxDV_perCycle_mps = inf;
 
+%% 10. HOLDING-POINT DELTA V
 
-%% ================================================================
-% 9. HOLDING-POINT CONTROL ALLOCATIONS
-% ================================================================
-
-% Additional propulsive allocation per minute of holding.
-%
-% V-bar stationary holds are idealized as zero-DV.
-% R-bar holding control is calculated by the MC function.
+% Idealized V-bar stationary holds.
+% Additional propulsive allocations currently zero.
 
 cfg.hold1_DVrate_mps_per_min = 0;
-
 cfg.hold2_DVrate_mps_per_min = 0;
+cfg.hold3_DVrate_mps_per_min = 0;
 
+%% 11. CLIENT AND ATLANTE OVERRIDES
 
-%% ================================================================
-% 10. MODEL LIMITATIONS
-% ================================================================
+% No differences assumed yet.
+% Can be extended after capture/docking design matures.
 
-% - HCW linearized relative-motion dynamics
-% - Impulsive homing and closing transfers
-% - Ideal continuous final approach
-% - V-bar / R-bar option changes closing target geometry
-%   and final approach axis
-% - Closing is not strictly axis-constrained
-% - KOZ screening uses sampled trajectory points
-% - No detailed sensor model
-% - No navigation uncertainty
-% - No finite-thrust model for impulsive transfers
-% - No automatic optimization of maneuver count
-% - P95 describes feasible sampled designs, not reliability
+cfg.client = struct();
+cfg.host = struct();
+
+%% 12. MODEL LIMITATIONS
+
+% - Linearized HCW dynamics
+% - Ideal impulsive Homing 1 and Homing 2
+% - Continuous quintic closing and final approach
+% - No finite-thrust feasibility validation
+% - Preliminary authorized KOZ entry corridor
+% - No detailed target collision geometry
+% - No detailed sensor or navigation model
+% - Sampling, not trajectory optimization
+% - P95 describes sampled feasible designs
 %
-% Future refinements:
-% - Distance-dependent relative-speed limits
-% - Separate V-bar and R-bar waypoint ranges
-% - Multiple homing and closing maneuvers
-% - Sensor acquisition and visibility constraints
-% - Thruster limits and propellant consumption
-% - Navigation uncertainty and robustness analysis
+% Future:
+% - Distance-dependent closing-rate gates
+% - Navigation and sensor constraints
+% - Propulsion acceleration/thrust constraints
+% - Abort and passive safety analysis
+% - Objective-based trajectory optimization
 
 end

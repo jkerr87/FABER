@@ -31,7 +31,7 @@ RAAN_target = 0;             % [deg]
 h_disposal = 250;
 
 % Choose one: 'modular_station' 'large_antenna' 'solar_array' 'orbital_computing' 'truss_platform'
-structureType = 'solar_array';
+structureType = 'truss_platform';
 
 r_target = R_E + h_target;
 
