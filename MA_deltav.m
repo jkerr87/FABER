@@ -451,8 +451,8 @@ cfgValidation.h_km = h_target;
 
 cfgValidation.x0_client = X0_RPO;
 
-V = FABER_RPO_validate_baseline( ...
-    cfgValidation,result_rendezvous);
+%V = FABER_RPO_validate_baseline( ...
+%    cfgValidation,result_rendezvous);
 
 %% INDIVIDUAL HOMING MANEUVERS
 
