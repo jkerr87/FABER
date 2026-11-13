@@ -54,10 +54,11 @@ maxAttempts = max(cfg.N, ...
 DV_phase = nan(cfg.N,10);
 TOF_phase = nan(cfg.N,10);
 
-% Seven design variables stored per approach:
-% HP1, HP2, Homing TOF, Closing TOF, Final TOF,
-% Number of homing transfers, Number of closing transfers
-settings = nan(cfg.N,14);
+% Nine design variables stored per approach:
+% HP1, HP2, Homing TOF, Hold 1 TOF, Closing TOF,
+% Hold 2 TOF, Final TOF,
+% Number of homing transfers, Number of closing transfe
+settings = nan(cfg.N,18);
 
 dv_client = nan(cfg.N,1);
 dv_host = nan(cfg.N,1);
@@ -70,8 +71,13 @@ methodHost = strings(cfg.N,1);
 
 peakSpeed = nan(cfg.N,1);
 
+X0_client = nan(cfg.N,6);
+X0_host   = nan(cfg.N,6);
+
 fail = struct( ...
     'geometry',0, ...
+    'time',0, ...
+    'terminal',0, ...
     'singular',0, ...
     'KOZ',0, ...
     'excursion',0, ...
@@ -91,8 +97,16 @@ while accepted < cfg.N && attempts < maxAttempts
 
     attempts = attempts + 1;
 
+    % Sample initial conditions (NEW)
+
+    x0_client = sampleInitialState( ...
+        cfg.x0_client, cfg.dx0_client);
+
+    x0_host = sampleInitialState( ...
+        cfg.x0_host, cfg.dx0_host);
+
     % One randomly sampled client approach
-    [c,reasonC] = sampleLeg(cfg,cfg.x0_client,n);
+    [c,reasonC] = sampleLeg(cfg,x0_client,n);  % MODIFIED
 
     if ~isempty(reasonC)
         fail.(reasonC) = fail.(reasonC) + 1;
@@ -100,7 +114,7 @@ while accepted < cfg.N && attempts < maxAttempts
     end
 
     % One randomly sampled host approach
-    [h,reasonH] = sampleLeg(cfg,cfg.x0_host,n);
+    [h,reasonH] = sampleLeg(cfg,x0_host,n);    % MODIFIED
 
     if ~isempty(reasonH)
         fail.(reasonH) = fail.(reasonH) + 1;
@@ -115,6 +129,10 @@ while accepted < cfg.N && attempts < maxAttempts
 
     % Accept feasible realization
     accepted = accepted + 1;
+
+    % Store initial conditions for accepted trial
+    X0_client(accepted,:) = x0_client';
+    X0_host(accepted,:)   = x0_host';
 
     DV_phase(accepted,:) = [c.dvPhase h.dvPhase];
     TOF_phase(accepted,:) = [c.tofPhase h.tofPhase];
@@ -179,6 +197,9 @@ methodHost = methodHost(1:accepted);
 
 dv_cycle = dv_client + dv_host;
 tof_cycle = tof_client + tof_host;
+
+X0_client = X0_client(1:accepted,:);
+X0_host   = X0_host(1:accepted,:);
 
 %% PARETO FRONTIER: MINIMIZE TOF AND DELTA V
 
@@ -261,41 +282,43 @@ trialTable = table( ...
      'HostTOF_min','CycleTOF_min', ...
      'PeakSpeed_mps','ClientMethod','HostMethod'});
 
-%% SAVE PARETO DESIGN PARAMETERS
-
-paretoTable = trialTable(paretoIdx,:);
-
-out.paretoTable = paretoTable;
-out.paretoIndices = paretoIdx;
-out.paretoDV_mps = paretoDV;
-out.paretoTOF_min = paretoTOF;
-
-fprintf('\nPareto-optimal sampled designs: %d / %d\n', ...
-    numel(paretoIdx),accepted);
-
-if cfg.saveCSV
-    writetable(paretoTable, ...
-        fullfile(cfg.outputFolder,'RPO_MC_Pareto.csv'));
-end
-
 drawNames = { ...
     'ClientHP1_m', ...
     'ClientHP2_m', ...
     'ClientHoming_min', ...
+    'ClientHold1_min', ...
     'ClientClosing_min', ...
+    'ClientHold2_min', ...
     'ClientFinal_min', ...
     'ClientN_Homing', ...
     'ClientN_Closing', ...
     'HostHP1_m', ...
     'HostHP2_m', ...
     'HostHoming_min', ...
+    'HostHold1_min', ...
     'HostClosing_min', ...
+    'HostHold2_min', ...
     'HostFinal_min', ...
     'HostN_Homing', ...
     'HostN_Closing'};
 
 trialTable = [trialTable ...
     array2table(settings,'VariableNames',drawNames)];
+
+initialNames = { ...
+    'ClientX0_m', 'ClientY0_m', 'ClientZ0_m', ...
+    'ClientVx0_mps', 'ClientVy0_mps', 'ClientVz0_mps', ...
+    'HostX0_m', 'HostY0_m', 'HostZ0_m', ...
+    'HostVx0_mps', 'HostVy0_mps', 'HostVz0_mps'};
+
+trialTable = [trialTable ...
+    array2table([X0_client X0_host], ...
+    'VariableNames',initialNames)];
+
+%% SAVE PARETO DESIGN PARAMETERS
+
+paretoTable = trialTable(paretoIdx,:);
+
 
 %% 8. PRINT RESULTS
 
@@ -330,6 +353,11 @@ fprintf('NOTE: P95 describes feasible sampled designs.\n');
 %% 9. OUTPUT STRUCTURE
 
 out = struct();
+
+out.paretoTable = paretoTable;
+out.paretoIndices = paretoIdx;
+out.paretoDV_mps = paretoDV;
+out.paretoTOF_min = paretoTOF;
 
 out.cfg = cfg;
 out.accepted = accepted;
@@ -375,6 +403,9 @@ if cfg.saveCSV
 
     writetable(phaseTable, ...
         fullfile(cfg.outputFolder,'RPO_MC_phases.csv'));
+
+    writetable(paretoTable, ...
+        fullfile(cfg.outputFolder,'RPO_MC_Pareto.csv'));
 
 end
 
@@ -706,12 +737,6 @@ if min(minH,minC) < cfg.KOZ_m
     return;
 end
 
-% Closing outward excursion
-if maxC > cfg.maxClosingExcursionFactor*hp1
-    fail = 'excursion';
-    return;
-end
-
 if spH > cfg.maxSpeed_homing_mps
     fail = 'speed_homing';
     return;
@@ -758,7 +783,7 @@ res.peakSpeed = peak;
 res.method = method;
 
 res.draw = [ ...
-    hp1 hp2 Th/60 Tc/60 Tfinal/60 ...
+    hp1 hp2 Th/60 T_hold1 Tc/60 T_hold2 Tfinal/60 ...
     d.Nh d.Nc];
 
 end
@@ -848,6 +873,21 @@ end
 
 end
 
+%% =====================================================================
+% fn to give the MC a new initial state each run
+% ======================================================================
+function x0 = sampleInitialState(x0_nom, dx0)
+
+% Uniform variations around nominal initial state
+% x0_nom: nominal 6x1 relative state
+% dx0: maximum absolute variation in each component
+
+delta = (2*rand(6,1)-1).*dx0;
+
+x0 = x0_nom + delta;
+
+end
+
 %% ================================================================
 % LOCAL FUNCTION: CONFIGURATION VALIDATION
 % ================================================================
@@ -919,6 +959,16 @@ assert(iscell(cfg.methods) && ...
 
 assert(all(ismember( ...
     lower(string(cfg.methods)),["vbar","rbar"])));
+
+assert(all(size(cfg.dx0_client)==[6 1]) && ...
+    all(size(cfg.dx0_host)==[6 1]), ...
+    'Initial-condition variations must be 6x1.');
+
+assert(all(isfinite(cfg.dx0_client)) && ...
+    all(isfinite(cfg.dx0_host)) && ...
+    all(cfg.dx0_client>=0) && ...
+    all(cfg.dx0_host>=0), ...
+    'Initial-condition variation bounds must be finite and nonnegative.');
 
 end
 

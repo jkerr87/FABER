@@ -90,6 +90,16 @@ cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
 
 cfg.x0_host = [50;-2000;20;0.01;0.04;-0.01];
 
+% INITIAL CONDITION VARIATIONS
+
+% Maximum deviations from nominal initial state
+% [x; y; z; vx; vy; vz]
+% Position [m], velocity [m/s]
+
+cfg.dx0_client = [100; 300; 100; 0.05; 0.05; 0.05];
+
+cfg.dx0_host = [100; 300; 100; 0.05; 0.05; 0.05];
+
 
 %% ================================================================
 % 5. MANEUVER GEOMETRY [m]
@@ -180,12 +190,12 @@ cfg.N_closing = [1 4];
 % NOTE: The published reference uses distance-dependent limits.
 % The existing code applies this one value to every trajectory.
 
-cfg.maxSpeed_mps = 1.0;       % [m/s]
+cfg.maxSpeed_mps = 10.0;       % [m/s]
 
 % Distance/phase-dependent speed limits [m/s]
-cfg.maxSpeed_homing_mps = 1.0;
-cfg.maxSpeed_closing_mps = 1.0;
-cfg.maxSpeed_final_mps = 1.0;
+cfg.maxSpeed_homing_mps = 25.0;
+cfg.maxSpeed_closing_mps = 10.0;
+cfg.maxSpeed_final_mps = 10.0;
 
 % Maximum acceleration for continuous final approach
 % Unlimited until Taxi thruster performance is available.

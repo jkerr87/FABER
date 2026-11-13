@@ -317,7 +317,7 @@ TOF_far = TOF_injection;  % [s]
 h_base = h_target;                     % Host Structure altitude
 h_launcher_nominal = h_target;         % Nominal module release altitude (modify if different)
 dh_err = alt_error_launch + h_SD;      % Total altitude uncertainty
-phase_deg = 180;                       % Maximum true anomaly phase angle to recover 
+phase_deg = 20;                       % Maximum true anomaly phase angle to recover 
 N_rev = 100;                           % Number of orbits allowed for the maneuver
 
 % Phasing manoeuvre function call

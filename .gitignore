@@ -10,6 +10,7 @@
 *.xlsx
 *.xls
 *.fig
+*.md
 
 # MATLAB temporary and backup files
 *.asv
