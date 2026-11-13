@@ -16,6 +16,8 @@ addpath('ORBMECH');
 addpath('MonteCarlo');
 addpath('config');
 addpath('ProximityOps');
+addpath('NominalOps');
+addpath('AssemblyOps');
 
 mu = astroConstants(13);
 R_E = astroConstants(23);
