@@ -13,8 +13,10 @@ clear; clc; close all;
 % ================================================================
 % Constants
 addpath('ORBMECH');
-addpath('PM_V2');
-addpath('PM_V2\configs');
+addpath('MonteCarlo');
+addpath('config');
+addpath('ProximityOps');
+
 mu = astroConstants(13);
 R_E = astroConstants(23);
 
