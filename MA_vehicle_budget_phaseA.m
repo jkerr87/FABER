@@ -182,12 +182,15 @@ rows = add(rows,'Taxi','Outbound far', ...
     'Calculated','phasing_manoeuvre',true);
 
 % Return
+
+% Return: same 15 km altitude difference as outbound
 [ra,rb,tr] = hohmann(mu, ...
-    Re+PH.worst_h_launcher,r0);
+    r0 + cfg.launchAltError_km,r0);
 
 DV_returnAlt = abs(ra)+abs(rb);
 DV_returnInc = DV_inc;
 DV_returnRAAN = DV_RAAN;
+
 
 rows = add(rows,'Taxi','Inbound far', ...
     'Altitude to ATLANTE','Baseline',Ndeliveries, ...
@@ -1010,8 +1013,10 @@ function cfg = defaultInputs()
 
 cfg = struct();
 
-cfg.h_target_km = 457.25;
-cfg.i_target_deg = 51.02;
+%cfg.h_target_km = 457.25;
+%cfg.i_target_deg = 51.02;
+cfg.h_target_km = 680.12;
+cfg.i_target_deg = 98.12;
 
 cfg.missionYears = 7;
 cfg.Nclients = 3;
@@ -1021,13 +1026,17 @@ cfg.launchAltError_km = 15;
 cfg.launchIncError_deg = 0.1;
 cfg.launchRAANError_deg = 0.1;
 
-cfg.hClientSpread_km = 67.47;
-cfg.iClientSpread_deg = 2.81;
+%cfg.hClientSpread_km = 67.47;
+%cfg.iClientSpread_deg = 2.81;
+%cfg.clientRAANSpread_deg = 0;
+
+cfg.hClientSpread_km = 72.84;
+cfg.iClientSpread_deg = 0.31;
 cfg.clientRAANSpread_deg = 0;
 
 cfg.phaseAngle_deg = 20;
-cfg.phasingRevs = 35;
-cfg.disposalPerigee_km = 250;
+cfg.phasingRevs = 10;
+cfg.disposalPerigee_km = 160;
 
 cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
 cfg.x0_atlante = cfg.x0_client;
