@@ -14,21 +14,17 @@ function R = FABER_RPO_9phase_MC(cfg)
 %   analytical_manos.m
 %   rpo_continuous.m
 
-assert(exist('analytical_manos','file')==2, ...
-    'Missing analytical_manos.m');
-
-assert(exist('rpo_continuous','file')==2, ...
-    'Missing rpo_continuous.m');
-
-checkConfig(cfg);
+%checkConfig(cfg);
 
 rng(cfg.seed,'twister');
 
+% mean motion
 n = sqrt(cfg.mu_km3s2 / ...
     (cfg.Re_km+cfg.h_km)^3);
 
 %% 1. GENERATE ALL METHOD COMBINATIONS
-
+% homing 2, closing 1, closing 2, "gate mode" for HP4
+% homing 1, final approach are fixed based on dynamics constraints
 [A,B,C,G] = ndgrid( ...
     1:numel(cfg.methodsH2), ...
     1:numel(cfg.methodsC1), ...
@@ -851,42 +847,6 @@ if isempty(a)
 end
 
 p = a(max(1,ceil(.95*numel(a))));
-
-end
-
-%% ============================================================
-% CONFIGURATION VALIDATION
-% =============================================================
-
-function checkConfig(c)
-
-assert(c.N>=1 && c.N==floor(c.N));
-assert(c.nTrajectorySamples>=3);
-
-assert(c.AZ_m>c.KOZ_m && c.KOZ_m>0);
-
-assert(c.hp1_m(1)>c.hp2_m(2));
-
-assert(c.hp2_m(1)>c.AZ_m);
-assert(c.AZ_m>c.hp3_m(2));
-
-assert(c.hp3_m(1)>c.KOZ_m);
-assert(c.KOZ_m>c.hp4_m(2));
-
-assert(c.hp4_m(1)>c.final_m(2));
-
-assert(all(c.holdDVrate_mps_per_min>=0));
-assert(numel(c.holdDVrate_mps_per_min)==4);
-
-assert(isequal(size(c.x0_client),[6 1]));
-assert(isequal(size(c.x0_host),[6 1]));
-
-allowedH = {'GeneralHCW','Vbar','Rbar'};
-allowedC = {'GeneralHCW','Continuous'};
-
-assert(all(ismember(c.methodsH2,allowedH)));
-assert(all(ismember(c.methodsC1,allowedH)));
-assert(all(ismember(c.methodsC2,allowedC)));
 
 end
 

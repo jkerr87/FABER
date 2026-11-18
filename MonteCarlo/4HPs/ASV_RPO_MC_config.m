@@ -86,7 +86,7 @@ cfg.gateModes = {'FullStop','FlyThrough'};
 
 % Exploratory approach velocity at HP4 [m/s].
 % Positive y points toward the target from negative V-bar.
-cfg.gateSpeed_mps = 0.1;
+cfg.gateSpeed_mps = 0.01;
 
 cfg.hold4_min = [0 0];
 
