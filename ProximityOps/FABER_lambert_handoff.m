@@ -12,6 +12,8 @@ validateattributes(epoch_s,{'numeric'},{'scalar','finite','real'});
 validateattributes(minPerigee_km,{'numeric'},{'scalar','finite','real','nonnegative'});
 
 bestDV = Inf;
+candidates = nan(numel(times)*(1+double(rev>0)),6);
+candidate = 0;
 for dt = times(:)'
     chief = chiefAtTime(dt);
     gate = FABER_relative_state(chief,gateLVLH,'lvlhToEci')/1000;
@@ -21,12 +23,15 @@ for dt = times(:)'
             continue
         end
         perigee = p/(1+e)-Re;
-        if perigee<minPerigee_km
-            continue
-        end
         departureBurn = vi(:)-taxi(4:6);
         arrivalBurn = gate(4:6)-vf(:);
         dv = norm(departureBurn)+norm(arrivalBurn);
+        candidate = candidate+1;
+        candidates(candidate,:) = [dt,branch,perigee, ...
+            1000*norm(departureBurn),1000*norm(arrivalBurn),1000*dv];
+        if perigee<minPerigee_km
+            continue
+        end
         if dv<bestDV
             bestDV = dv;
             transfer = struct('transferTime_s',dt,'departureEpoch_s',epoch_s, ...
@@ -54,6 +59,10 @@ if norm(arrival(1:3)-transfer.gateTargetECI(1:3)) >= 1 || ...
     transfer = [];
     return;
 end
+transfer.search = array2table(candidates(1:candidate,:), ...
+    'VariableNames',{'Duration_s','Branch','PerigeeAltitude_km', ...
+    'DepartureDV_mps','ArrivalDV_mps','TotalDV_mps'});
+transfer.search.PassesPerigee = transfer.search.PerigeeAltitude_km>=minPerigee_km;
 transfer.arrivalPreBurnECI = arrival;
 arrival(4:6) = arrival(4:6)+transfer.arrivalBurn_mps;
 transfer.arrivalPostBurnECI = arrival;

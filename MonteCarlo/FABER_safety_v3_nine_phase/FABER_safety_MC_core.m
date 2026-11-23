@@ -79,7 +79,7 @@ for k=1:N
         CAMTotalTime_min(k)=0;TimeToSafeShell_min(k)=0;
         Status(k)="No CAM required: passive safe";
         % Already on a passive safe trajectory; recovery still optional.
-        if cfg.recovery.enabled
+        if cfg.enableActiveCAM && cfg.recovery.enabled
             forceVectors=eventForces(cfg,e);
             [RecoveryFeasible(k),RecoveryDV_mps(k),RecoveryTOF_min(k)] = ...
                 recoveryCheck(x,mass,cfg,hazards,forceVectors);
@@ -91,6 +91,10 @@ for k=1:N
         cfg.screen.burnStep_s,cfg.n,hazards,cfg.screen.collisionRadius_m);
     if badDelay
         Status(k)="Collision before detection/response";continue;
+    end
+    if ~cfg.enableActiveCAM
+        Status(k)="CAM unassessed: no verified firing-group vectors";
+        continue;
     end
     xd=hcwPhi(cfg.n,cfg.detectionDelay_s)*x;
     forceVectors=eventForces(cfg,e);

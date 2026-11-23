@@ -3,9 +3,9 @@ root = fileparts(mfilename('fullpath'));
 addpath(genpath(root));
 addpath(fullfile(root,'MonteCarlo','FABER_safety_v3_nine_phase'),'-begin');
 if nargin < 1 || isempty(cfg)
-    cfg = defaultInputs();
+    cfg = FABER_phaseA_defaults();
 else
-    defaults = defaultInputs();
+    defaults = FABER_phaseA_defaults();
     if isfield(cfg,'orbitRadialAmplitude_m')
         defaults.taxiParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
         defaults.atlanteParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
@@ -124,29 +124,7 @@ rows = add(rows,'Taxi','Outbound far', ...
     norm(outbound.arrivalBurn_mps),0, ...
     'Estimated','Inertial velocity match at the RPO gate',true);
 
-mcCfg = ASV_RPO_MC_config();
-mcCfg.mu_km3s2 = mu;
-mcCfg.Re_km = Re;
-mcCfg.h_km = cfg.h_target_km;
-mcCfg.x0_client = outbound.arrivalLVLH;
-mcCfg.arrivalEpochClient_s = outbound.arrivalEpoch_s;
-mcCfg.clientH_km = hModule;
-mcCfg.arrivalStatesClient = repmat(outbound.arrivalLVLH,1,cfg.N_RPO_MC);
-mcCfg.x0_host = cfg.x0_atlante(:);
-mcCfg.N = cfg.N_RPO_MC;
-mcCfg.seed = cfg.RPO_seed_client;
-mcCfg.methodsH2 = {'Vbar'};
-mcCfg.methodsC1 = {'Rbar'};
-mcCfg.methodsC2 = {'GeneralHCW'};
-mcCfg.gateModes = {'FlyThrough'};
-mcCfg.homing1_min = [30 100];
-mcCfg.maxBurnFraction = 0.10;
-outboundDV = norm(outbound.departureBurn_mps)+norm(outbound.arrivalBurn_mps);
-mcCfg.massTaxi_kg = cfg.massTaxi_kg*exp(-outboundDV/(9.80665*cfg.farFieldIsp_s));
-mcCfg.returnHandoff = @(client,mass) FABER_return_lambert(mu,Re,cfg,outbound,client,mass);
-mcCfg.payloadMass_kg = cfg.payloadMass_kg;
-mcCfg.makePlots = false;
-mcCfg.saveCSV = false;
+mcCfg = FABER_phaseA_rpo_config(cfg,mu,Re,outbound);
 RPO_MC = FABER_RPO_9phase_MC(mcCfg);
 phases = RPO_MC.phaseNames;
 valid = find(RPO_MC.valid(:,1));
@@ -826,98 +804,6 @@ for unit = unique(T.BudgetUnit(mask),'stable')'
 end
 end
 
-function cfg = defaultInputs()
-cfg = struct();
-
-% cfg.h_target_km = 680.12;
-% cfg.i_target_deg = 98.12;
-% cfg.hClientSpread_km = 72.84;
-% cfg.iClientSpread_deg = 0.31;
-
-cfg.h_target_km = 457.25;
-cfg.i_target_deg = 51.02;
-cfg.hClientSpread_km = 67.47;
-cfg.iClientSpread_deg = 2.81;
-
-cfg.missionYears = 7;
-cfg.taxiParkingYears = cfg.missionYears; % Continuous-parking exposure until a duty cycle is supplied.
-cfg.launchAltError_km = 15;
-cfg.launchIncError_deg = 0.1;
-cfg.launchRAANError_deg = 0.1;
-cfg.clientRAANSpread_deg = 0;
-cfg.interClientRAANReserve_mps = 100;
-cfg.phaseAngle_deg = 20;
-cfg.phasingRevs = 10;
-cfg.outboundLambertTOF_s = []; % Empty searches around the nominal revolution count.
-cfg.outboundLambertRevolutions = [];
-cfg.returnLambertTOF_s = [];
-cfg.returnLambertRevolutions = [];
-cfg.farFieldIsp_s = 315.5;
-cfg.outboundMinimumPerigee_km = 160;
-cfg.outboundDepartureEpoch_s = 0; % Seconds on the scenario clock.
-cfg.outboundDepartureArgumentOfLatitude_deg = 0;
-cfg.outboundAtlanteRAAN_deg = 0;
-cfg.moduleAltitudeOffset_km = -15;
-cfg.moduleInclinationOffset_deg = 0.1;
-cfg.moduleRAANOffset_deg = 0.1;
-cfg.payloadMass_kg = 2000;
-cfg.assemblyTransferTimes_min = 5:5:130;
-cfg.vehicleBudgetFolder = '';
-cfg.disposalPerigee_km = 160;
-cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
-cfg.x0_atlante = cfg.x0_client;
-cfg.abortDV_mps = 1;
-cfg.CAM_DV_mps = 1;
-cfg.marginFraction = 0.05;
-cfg.marginMinimum_mps = 10;
-cfg.massTaxi_kg = 3503.59;
-cfg.massKiki_kg = 1813.62;
-cfg.massRango_kg = 1813.62;
-cfg.massAtlante_kg = 4805.47;
-cfg.massHost_kg = 1000;
-cfg.areaTaxi_m2 = (cfg.massTaxi_kg/100)^(2/3);
-massAtlanteStack = cfg.massAtlante_kg + ...
-                   cfg.massKiki_kg + cfg.massRango_kg;
-cfg.areaAtlante_m2 = (massAtlanteStack/100)^(2/3);
-cfg.areaHost_m2 = 8;
-cfg.CdTaxi = 2.2;
-cfg.CdAtlante = 2.2;
-cfg.CdHost = 2.2;
-cfg.taxiDistance_m = 1000;
-cfg.taxiDeadband_m = 25;
-cfg.atlanteDistance_m = 250;
-cfg.atlanteDeadband_m = 10;
-cfg.skStep_s = 60;
-cfg.rhoRef_kgm3 = 1e-12;
-cfg.scaleHeight_m = 60000;
-cfg.captureWait_min = NaN;
-cfg.handoverWait_min = NaN;
-cfg.veicLoading_min = NaN;
-cfg.veicCharge_min = NaN;
-cfg.veicHold_min = NaN;
-cfg.runAnnualSK = true;
-cfg.includeMomentumUnloading = true;
-cfg.taxiDistance_m = 1000;
-cfg.atlanteDistance_m = 250;
-cfg.parkingEntryTime_s = 3600;
-cfg.parkingDepartureTime_s = 3600;
-% LVLH pre-burn handoff [m; m/s], with V-bar behind the reference.
-cfg.taxiParkingDepartureState = [0;-100;0;0;0;0];
-cfg.atlanteParkingDepartureState = [0;-100;0;0;0;0];
-cfg.taxiParkingWaitBeforeDeparture_s = 0;
-cfg.atlanteParkingWaitBeforeDeparture_s = 0;
-defaultEllipse = struct('ellipseCenter_m',NaN, ...
-    'ellipseRadialAmplitude_m',20,'ellipsePhase_rad',0);
-cfg.taxiParkingEllipse = defaultEllipse;
-cfg.atlanteParkingEllipse = defaultEllipse;
-cfg.relativeSKDensity_kgm3 = NaN; % Evaluate the density model at parking altitude.
-cfg.relativeSKInterval_hr = 6;
-cfg.taxiParkingAZ_m = 300;
-cfg.atlanteParkingAZ_m = NaN; % Host approach-zone radius requires a mission input.
-cfg.relativeSKAZmargin_m = 0;
-cfg.N_RPO_MC = 1000;
-cfg.RPO_seed_client = 42;
-end
 function rows = add(rows,veh,seg,phase,arch, ...
     count,dv,tof,status,basis,baseline)
 if isfinite(dv)

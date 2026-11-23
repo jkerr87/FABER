@@ -24,6 +24,7 @@ if isempty(transfer)
         'No outbound Lambert arc passed the perigee and endpoint checks. Adjust duration, revolutions or geometry.');
 end
 transfer.moduleArrivalECI = transfer.referenceArrivalECI;
+transfer.moduleDepartureECI = moduleAtTime(0);
 transfer.atlanteDepartureECI = 1000*atlante;
 end
 

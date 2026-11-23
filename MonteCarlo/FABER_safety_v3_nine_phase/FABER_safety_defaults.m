@@ -15,6 +15,7 @@ D.screen=struct('passiveHorizon_s',24*3600,'dt_s',300, ...
 D.camDVgrid_mps=[0.002 0.005 0.01 0.02 0.03 0.05 ...
     0.075 0.1 0.15 0.2 0.5 1];
 D.camMaxDV_mps=1;D.camMaxBurn_s=300;
+D.enableActiveCAM=true;
 D.vehicleMass_kg=NaN;
 D.hazards=struct('centers_m',[0 0 0]);
 % Physical net force of independently executable simultaneous firing groups,

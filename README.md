@@ -43,7 +43,7 @@ operations and the Kiki table has an open host-access transport line.
 Phase A uses `ORBMECH/lambertMR.m` to connect Taxi's parking departure
 handoff to the module-relative RPO gate `cfg.x0_client`. The module starts
 `phaseAngle_deg` ahead in argument of latitude. Set the module orbit
-offsets relative to Atlante at sortie departure. The transfer uses a
+offsets relative to Atlante at round trip departure. The transfer uses a
 two-body circular target ephemeris and budgets both the departure burn
 and the gate velocity match. The propagated post-burn state seeds each
 outbound RPO trial. Those trials still sample approach design variables.
@@ -72,6 +72,69 @@ report a nominal outbound-only RPO budget. The model assumes ideal
 capture at the RPO endpoint and an impulsive departure from the stack
 state. Local separation and departure clearance, perturbations, and
 finite-burn validation remain separate from this calculation.
+
+### Coupled Taxi round trip safety and sensitivity
+
+Run the study independently of the maneuver budget. The example below saves
+CSV files and plots in the requested folder.
+
+```matlab
+cfg = struct('N',30,'outputFolder','FABER_Round_Trip_Study');
+cfg.phaseA = struct('captureWait_min',45);
+study = main_FABER_round_trip_safety(cfg);
+```
+
+Each case runs `N` trials. The default includes a nominal control,
+dispersions, missed burns and capture failure. Directed faults default
+to zero dispersions so the study can reach and isolate each injection
+point. Set `directedUsesDispersions = true` to combine them with the same
+draws used in the dispersed case. Set `cfg.cases` to a string array to
+choose a subset or include `"Outbound departure partial"` and
+`"Return departure partial"`. Matched trials also share an RPO seed. Each accepted client
+approach supplies its achieved endpoint and time to capture and dwell.
+The return is retargeted from that trial's stack and Atlante state, and
+its executed post-burn state and mass seed the return RPO. Faults and
+rejected gates leave downstream states open instead of substituting a
+nominal arrival.
+
+Input dispersions are illustrative 1-sigma values. `sigmaInjectionLVLH`
+and `sigmaModuleLVLH` are six-vectors in m and m/s, applied at the round trip
+departure to Taxi's residual injection state and the module state.
+`sigmaDepartureTime_s` slips departure, `sigmaBurnScale` is a fractional
+magnitude error, and `sigmaBurnVector_mps` adds independent inertial vector
+components at each far-field burn. A missed departure cancels the
+scheduled arrival burn. `truthJ2` can be set to `1.08262668e-3` to stress
+the two-body plan with J2 in inertial execution. Close-field propagation
+uses the existing nominal HCW model. Use `cfg.rpo` for existing
+feasibility inputs such as `clientGeometry`, `hostGeometry`,
+`terminalCorridorHalfWidth_m`, and speed or propulsion limits. Set
+`gatePositionTolerance_m`, `gateVelocityTolerance_mps`,
+`farProtectedRadius_m`, `contactRadius_m`, and `passiveHorizon_s` to
+mission-specific screening values.
+
+`study.trials` contains stage, reason, epochs, gate residuals, closest
+approach, and executed delta-V. P95 cost and time use complete round trips.
+`study.sensitivity` reports descriptive rank correlations and sample
+counts for dispersed trials. Later-stage metrics are conditional on
+reaching that stage. The plots show LVLH ensembles, terminal paths and
+configured boundaries, Lambert burn delta-V versus time, gate error
+scatter, range and closing speed, passive drift, and distributions.
+
+`cfg.rpoFaultTrials` controls an additional conditional fault screen on
+recorded burn and coast events. The screen uses dispersed trajectories
+when available and falls back to the nominal control. The default is
+30 samples per approach when events are available. CAM searches require
+verified net firing-group vectors in
+`cfg.rpoSafety.camForceVectors_LVLH_N`. Without those vectors, the screen
+reports passive drift and leaves CAM unassessed. CAM and optional recovery
+are separate branches from the round trip simulation. Directed case counts
+and conditional fault outcomes do not represent operational fault
+probabilities.
+
+The model uses nominal RPO retargeting, ideal attachment, and illustrative
+clearance and uncertainty inputs. It supports preliminary trajectory
+screening. A navigation estimator, closed-loop controller, capture
+mechanics, and vehicle-specific qualification are separate work.
 
 ### Parking departure and relative stationkeeping
 
