@@ -47,6 +47,7 @@ cfg.Re_km = 6378.1363;
 % CHANGED: set reference altitude for this trade study.
 % Use 457.25 to reproduce the older orbit assumption.
 cfg.h_km = 680.12;
+cfg.h_km = 457.25;
 
 %% 4. INITIAL RELATIVE STATES - UNCHANGED
 

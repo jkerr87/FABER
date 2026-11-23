@@ -94,6 +94,7 @@ assert(all(isfinite(modulePoints(:))));
 
 assert(opts.gateDistance_m>0);
 assert(opts.minTargetRange_m>=0);
+validateattributes(opts.maxTransferDV_mps,{'numeric'},{'scalar','real','nonnegative'});
 
 assert(all([opts.maxTransferSpeed_mps, ...
     opts.maxExitSpeed_mps, ...
@@ -130,6 +131,7 @@ TOFback = NaN(Nmodules,M);
 
 feasible = false(Nmodules,M);
 records = cell(Nmodules,M);
+rejectionByDirection = strings(Nmodules,M,2);
 
 %% ================================================================
 % 3. COMPUTE ROUND TRIPS
@@ -152,6 +154,8 @@ for i = 1:Nmodules
         inbound = optimizeDirection( ...
             modulePos,hostPoint,method,n, ...
             Npts,timesMin,opts);
+
+        rejectionByDirection(i,j,:) = reshape([outbound.reason,inbound.reason],1,1,2);
 
         % Both directions must be feasible
         if ~(outbound.feasible && inbound.feasible)
@@ -230,6 +234,7 @@ pathsReturn = cell(Nmodules,1);
 timePerLeg = NaN(Nmodules,2);
 bestRecords = cell(Nmodules,1);
 
+totalTimePerDirection_min = nan(Nmodules,2);
 for i = 1:Nmodules
 
     [bestScore,j] = min(Scores(i,:),[],'omitnan');
@@ -285,6 +290,7 @@ for i = 1:Nmodules
     timePerLeg(i,:) = [ ...
         a.transferTOF_min,b.transferTOF_min];
 
+    totalTimePerDirection_min(i,:) = [a.tof_min,b.tof_min];
     bestRecords{i} = r;
 
 end
@@ -308,6 +314,7 @@ result.ObjectiveScore_byModuleMethod = Scores;
 result.TOF_byModuleMethod_min = TOF;
 
 result.records = records;
+result.rejectionByDirection = rejectionByDirection;
 
 result.bestMethodPerModule = bestMethod;
 result.bestRecords = bestRecords;
@@ -327,6 +334,7 @@ result.maxFinalSpeed_mps = maxFinalSpeed;
 
 result.TOF_perModule_min = TOF_perModule;
 result.timePerLeg_min = timePerLeg;
+result.totalTimePerDirection_min = totalTimePerDirection_min;
 
 result.pathsOut = pathsOut;
 result.pathsReturn = pathsReturn;
@@ -403,7 +411,7 @@ end
 function out = optimizeDirection( ...
     source,target,method,n,Npts,timesMin,opts)
 
-out = struct('feasible',false);
+out = struct('feasible',false,'reason',"gate separation");
 
 g = opts.gateDistance_m;
 
@@ -441,15 +449,10 @@ exitSeg = bestControlledSegment( ...
     source,exitGate,n,max(Npts,201), ...
     opts.exitTimesMin, ...
     opts.maxExitSpeed_mps, ...
-    opts.maxExitAccel_mps2,opts);
+    opts.maxExitAccel_mps2,target,g,opts);
 
 if ~exitSeg.feasible
-    return;
-end
-
-% Controlled departure cannot enter target exclusion sphere.
-if min(vecnorm( ...
-        exitSeg.path(1:3,:)-target,2,1)) < g-1e-5
+    out.reason = "no feasible departure duration";
     return;
 end
 
@@ -461,83 +464,47 @@ transfer = struct('feasible',false,'dv',Inf,'cost',Inf);
 
 for tMin = timesMin(:)'
 
-    try
-
-        % Gate-to-gate transfer, stationary at both ends
-        sol = HCW_solver( ...
-            exitGate,zeros(3,1), ...
-            entryGate,zeros(3,1), ...
-            60*tMin,n,Npts);
-
-        if ~isfield(sol,'dvTotal') || ...
-           ~isfield(sol,'trajectory')
-            continue;
-        end
-
-        X = sol.trajectory;
-
-        if size(X,1)~=6 || ...
-           any(~isfinite(X(:))) || ...
-           ~isfinite(sol.dvTotal)
-            continue;
-        end
-
-        % Verify transfer endpoints
-        if norm(X(1:3,1)-exitGate)>1e-3 || ...
-           norm(X(1:3,end)-entryGate)>1e-3
-            continue;
-        end
-
-        % Maximum relative speed [m/s]
-        speed = max(vecnorm(X(4:6,:),2,1));
-
-        if speed>opts.maxTransferSpeed_mps
-            continue;
-        end
-
-        % Distance from source and target interfaces [m]
-        rhoSource = vecnorm( ...
-            X(1:3,:)-source,2,1);
-
-        rhoTarget = vecnorm( ...
-            X(1:3,:)-target,2,1);
-
-        % HCW transfer must remain outside both gate spheres.
-        if min(rhoSource)<g-1e-5 || ...
-           min(rhoTarget)<g-1e-5
-            continue;
-        end
-
-        % Optional additional target exclusion
-        if opts.minTargetRange_m>0 && ...
-           min(rhoTarget)<opts.minTargetRange_m
-            continue;
-        end
-
-        % Select minimum objective over feasible transfer times.
-        cost = objectiveCost(sol.dvTotal,tMin,opts);
-        if cost<transfer.cost
-
-            transfer = struct( ...
-                'feasible',true, ...
-                'dv',sol.dvTotal, ...
-                'cost',cost, ...
-                'T_min',tMin, ...
-                'path',X, ...
-                'maxSpeed_mps',speed, ...
-                'minSourceRange_m',min(rhoSource), ...
-                'minTargetRange_m',min(rhoTarget));
-
-        end
-
-    catch
-        % Ignore unusable/singular time candidates.
+    % Gate-to-gate transfer, stationary before/after the impulses.
+    sol = HCW_solver(exitGate,zeros(3,1),entryGate,zeros(3,1), ...
+        60*tMin,n,Npts);
+    X = sol.trajectory;
+    if ~sol.ok || sol.positionError > 1e-3 || sol.velocityError > 1e-6
         continue;
+    end
+
+    speed = max(vecnorm(X(4:6,:),2,1));
+    rhoSource = vecnorm(X(1:3,:)-source,2,1);
+    rhoTarget = vecnorm(X(1:3,:)-target,2,1);
+    if speed > opts.maxTransferSpeed_mps || min(rhoSource) < g-1e-5 || ...
+            min(rhoTarget) < max(g-1e-5,opts.minTargetRange_m)
+        continue;
+    end
+
+    if sol.dvTotal > opts.maxTransferDV_mps || ...
+            FABER_path_clearance(X(1:3,:),opts.pathGeometry) <= 0
+        continue;
+    end
+
+    % Select minimum objective over feasible transfer times.
+    cost = objectiveCost(sol.dvTotal,tMin,opts);
+    if cost<transfer.cost
+
+        transfer = struct( ...
+            'feasible',true, ...
+            'dv',sol.dvTotal, ...
+            'cost',cost, ...
+            'T_min',tMin, ...
+            'path',X, ...
+            'maxSpeed_mps',speed, ...
+            'minSourceRange_m',min(rhoSource), ...
+            'minTargetRange_m',min(rhoTarget));
+
     end
 
 end
 
 if ~transfer.feasible
+    out.reason = "no feasible coast duration";
     return;
 end
 
@@ -549,15 +516,10 @@ finalSeg = bestControlledSegment( ...
     entryGate,target,n,max(Npts,201), ...
     opts.finalTimesMin, ...
     opts.maxFinalSpeed_mps, ...
-    opts.maxFinalAccel_mps2,opts);
+    opts.maxFinalAccel_mps2,source,g,opts);
 
 if ~finalSeg.feasible
-    return;
-end
-
-% Controlled arrival cannot enter source exclusion sphere.
-if min(vecnorm( ...
-        finalSeg.path(1:3,:)-source,2,1)) < g-1e-5
+    out.reason = "no feasible arrival duration";
     return;
 end
 
@@ -566,6 +528,7 @@ end
 % ================================================================
 
 out.feasible = true;
+out.reason = "";
 
 out.method = string(method);
 out.source_m = source;
@@ -627,7 +590,7 @@ end
 % ================================================================
 
 function seg = bestControlledSegment( ...
-    r0,rf,n,N,times,limSpeed,limAccel,opts)
+    r0,rf,n,N,times,limSpeed,limAccel,opposite,gateRadius,opts)
 
 seg = struct('feasible',false,'dv',Inf,'cost',Inf);
 
@@ -655,6 +618,11 @@ for tMin = times(:)'
     aMax = max(acc);
 
     if vMax>limSpeed || aMax>limAccel
+        continue;
+    end
+
+    if min(vecnorm(X(1:3,:)-opposite,2,1)) < gateRadius-1e-5 || ...
+            FABER_path_clearance(X(1:3,:),opts.pathGeometry) <= 0
         continue;
     end
 
@@ -809,6 +777,8 @@ defs = struct( ...
     'exitTimesMin',5:5:30, ...
     'finalTimesMin',5:5:30, ...
     'maxTransferSpeed_mps',Inf, ...
+    'maxTransferDV_mps',Inf, ...
+    'pathGeometry',struct(), ...
     'maxExitSpeed_mps',Inf, ...
     'maxFinalSpeed_mps',Inf, ...
     'maxExitAccel_mps2',Inf, ...

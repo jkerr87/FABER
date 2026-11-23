@@ -7,7 +7,7 @@ if nargin<5 || isempty(cfg),cfg=struct();end
 cfg=FABER_safety_defaults(cfg,mu,Re,h,'taxi');
 if isempty(events)
     error(['Taxi MC contains no recorded burn events. ', ...
-        'Run instrumented ASV_RPO_MonteCarlo with cfg.safetySaveBurns=true.']);
+        'Run instrumented FABER_RPO_9phase_MC with cfg.safetySaveBurns=true.']);
 end
 R=FABER_safety_MC_core(events,cfg);
 R.label='Taxi RPO impulsive-burn execution screening';

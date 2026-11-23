@@ -35,3 +35,5 @@ __pycache__/
 # Operating system files
 .DS_Store
 Thumbs.db
+/MonteCarlo/FABER_RPO_finite_validation_package/FABER_RPO_9phase_results/
+/MonteCarlo/FABER_RPO_finite_validation_package/FABER_RPO_results_phase/

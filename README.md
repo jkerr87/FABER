@@ -1,5 +1,226 @@
 # FABER
 
+## Integrated Taxi RPO and mission budget
+
+### Delta-V margin policy
+
+Each deterministic powered event receives an added allowance of the larger
+of 5% of its raw delta-V or 10 m/s. The floor is applied once to a complete
+event. For injection, inter-client transfer, and each far-field rendezvous,
+the detailed component rows receive proportional shares of that event's
+allowance. The assembly allowance is applied per powered leg per trip,
+before summing the campaign. Events with zero modeled delta-V remain zero.
+The event allowance is applied before multiplying by the event count.
+
+Stochastic RPO and contingency lines receive a 100% allowance. The integrated
+Monte Carlo budget doubles each accepted RPO cycle's cost and combines it
+with the already-margined non-RPO ledger. This produces raw and margined
+conditional P95 results without applying a second allowance to the total.
+Unresolved costs remain open. The rule applies to delta-V and leaves time
+and trial feasibility unchanged.
+
+### Per-vehicle phase tables
+
+```matlab
+cfg = struct('vehicleBudgetFolder', 'FABER_Per_Vehicle_Tables');
+out = MA_vehicle_budget_phaseA(cfg);
+```
+
+The function returns and optionally exports one table each for Taxi, Atlante,
+Kiki and Rango. Maneuver costs are quoted once per event, including each
+far-field leg, RPO approach, inter-client transfer, and parking entry or
+departure. Vehicle subtotals group like reporting units and sum one of
+each listed event, regardless of campaign size. The default
+`cfg.interClientRAANReserve_mps = 100` is added once to the margined
+inter-client transfer cost per vehicle. Module retrieval uses the
+modeled plane difference and the usual maneuver margin. Taxi close-field rows
+come from the paired trial nearest the accepted-cycle delta-V P95. Kiki
+relocation costs are the mean per sampled leg, with momentum unloading
+quoted over one relocation round trip. Rango is carried by Kiki
+during orbital transfers, so the Rango table flags unresolved surface
+operations and the Kiki table has an open host-access transport line.
+
+Phase A uses `ORBMECH/lambertMR.m` to connect Taxi's parking departure
+handoff to the module-relative RPO gate `cfg.x0_client`. The module starts
+`phaseAngle_deg` ahead in argument of latitude. Set the module orbit
+offsets relative to Atlante at sortie departure. The transfer uses a
+two-body circular target ephemeris and budgets both the departure burn
+and the gate velocity match. The propagated post-burn state seeds each
+outbound RPO trial. Those trials still sample approach design variables.
+
+See `out.outboundLambert` for the transfer and its inertial/LVLH handoff.
+The search defaults to `phasingRevs` revolutions and compares candidate
+durations and branches above `outboundMinimumPerigee_km`. Override the
+search with `outboundLambertTOF_s` and `outboundLambertRevolutions`.
+`outboundDepartureEpoch_s` sets the scenario clock at the pre-burn handoff.
+The initial orbit orientations are set at that epoch.
+
+Set `captureWait_min` to run the coupled return. Each successful nominal
+client approach supplies its terminal LVLH state and elapsed time. Phase A
+models instantaneous capture by combining Taxi and module position and
+momentum, then propagates the resulting stack and Atlante through the
+specified dwell. A second Lambert transfer targets `cfg.x0_atlante` at
+the achieved arrival epoch. The return RPO then uses the propagated
+post-burn state and the mass after the return burns. Both far-field legs
+estimate fuel using `farFieldIsp_s`.
+
+The selected pair's capture, departure and arrival are in
+`out.returnLambert`. Use `returnLambertTOF_s` and
+`returnLambertRevolutions` to override the default search. With the
+default unknown dwell, the return rows stay open and Phase A can still
+report a nominal outbound-only RPO budget. The model assumes ideal
+capture at the RPO endpoint and an impulsive departure from the stack
+state. Local separation and departure clearance, perturbations, and
+finite-burn validation remain separate from this calculation.
+
+### Parking departure and relative stationkeeping
+
+Phase A estimates a two-impulse HCW transfer from each parking option to
+a pre-burn LVLH handoff. The default handoff is 100 m behind the reference
+at zero relative velocity. Set `cfg.taxiParkingDepartureState` or
+`cfg.atlanteParkingDepartureState` to supply a different six-component
+state in m and m/s. `cfg.parkingDepartureTime_s` defaults to 3600 s.
+The vehicle-specific `taxiParkingWaitBeforeDeparture_s` and
+`atlanteParkingWaitBeforeDeparture_s` advance the ellipse phase from
+acquisition to departure. Each scenario reports an acquisition and a
+departure per event in `out.annualSK`.
+The far-field or inter-client budget carries the subsequent orbit-transfer
+burn. The HCW alignment is a budget estimate pending trajectory clearance
+and thrust verification.
+
+`MA_deltav.m` runs the same differential-drag function for Taxi relative
+to Atlante and Atlante relative to the host, with separate lifetime budget
+rows. Both use the full mission duration by default. Set
+`missionParkingConfig.TaxiYears` and `missionParkingConfig.AtlanteYears`
+for scenario-specific occupancy. The script uses its original idle Taxi
+properties and phase-A assumptions for the Atlante stack and host.
+
+Phase A runs the differential-drag model from
+`NominalOps/run_FABER_Taxi_idle_SK.m` for Taxi relative to Atlante and for
+Atlante relative to the host using the configured masses, drag areas, and
+drag coefficients. Taxi uses the independently supplied
+`cfg.taxiParkingYears`, which defaults to continuous parking over
+`cfg.missionYears`. Atlante uses the full mission operating period. Each vehicle has one relative stationkeeping row
+in the baseline. Both parking alternatives share that allowance because
+the constant-drag HCW model produces the same corrections for either
+geometry. The minimum sampled separation and approach-zone violations are
+reported in `out.annualSK` and `Parking_Stationkeeping.csv`.
+
+Set `cfg.taxiParkingEllipse` and `cfg.atlanteParkingEllipse` independently.
+Each accepts `ellipseCenter_m` (positive distance behind the chief),
+`ellipseRadialAmplitude_m`, and `ellipsePhase_rad`. For example:
+
+```matlab
+cfg.taxiParkingEllipse = struct('ellipseCenter_m',450, ...
+    'ellipseRadialAmplitude_m',25,'ellipsePhase_rad',0);
+cfg.atlanteParkingEllipse = struct('ellipseCenter_m',250, ...
+    'ellipseRadialAmplitude_m',20);
+out = MA_vehicle_budget_phaseA(cfg);
+```
+
+The standalone function takes two vehicle structs and an options struct:
+`SK = run_FABER_Taxi_idle_SK(follower,reference,opts)`. Both vehicles
+require `mass_kg`, `area_m2` and `Cd`, and can carry separate relative
+ellipse geometry in a common circular-chief frame. The follower pays
+for the corrections. Use `opts.altitude_m` and `opts.rho_kgm3` to specify
+the reference orbit and constant density. The model uses a 2:1 in-plane
+HCW ellipse and periodic two-impulse corrections, with a six-hour interval
+by default. The Atlante–host approach-zone radius is unresolved by default.
+
+The absolute drag allocation is still listed separately. Summing the two
+allocations is conservative if the same burns can serve both purposes.
+The model has no jointly targeted burn schedule or eccentric-chief
+dynamics. The legacy aggregate `MA_deltav` budget still represents its own
+idle configuration and retains its original stationkeeping model.
+
+### Integrated mission totals
+
+Run `MA_deltav` from the ASMAD root. The script writes the deterministic
+budget and two additional CSVs: `FABER_MC_RPO_Trials.csv` (one row per
+paired close-field cycle, including rejection reason) and
+`FABER_MC_Mission_Trials.csv` (one row per resampled delivery campaign).
+It uses the nine-phase safety package explicitly to avoid MATLAB path
+ambiguity. The budget removes both deterministic close-field approaches
+before adding the sampled paired cycle once per delivery. Remaining line
+items, including legacy abort and CAM allowances, are deterministic.
+Reported P95 delta-V and known time are conditional on successful cycles.
+Mission acceptance assumes independent, identically distributed deliveries;
+uncertain costs after a rejected attempt, shared biases, retries, and
+statistical confidence bounds require separate models.
+If any assembly round trip is unresolved, the affected assembly rows and
+full mission delta-V remain NaN. The output separately reports a P95 subtotal
+for known rows, excluding the unresolved assembly campaign.
+
+The default Taxi architecture follows the locally available FABER PM3
+report (ASV-3.pdf, Figure 1 and Table 5). The default 2,000 kg payload
+and 10% impulse-time screen follow the PM3 sizing case. The output includes
+the radial/along-track projection with AZ/KOZ and HP1–HP4, three-dimensional
+trajectories, range and radial closing speed, acceptance and delta-V versus
+TOF. The representative cycle is one actual accepted trial nearest the
+conditional cycle delta-V P95. PM3's 36-architecture study, 1,000 scenarios,
+and wet masses and orbits need to be reproduced separately before comparing
+published percentiles.
+
+Optional MATLAB workspace inputs:
+
+- `runMissionMC = false` runs only the deterministic budget.
+- `missionMCConfig` overrides fields from the nine-phase `ASV_RPO_MC_config`.
+  Use `missionArchitecture` to select a column of `MC_RPO.methods` when
+  supplying multiple architectures. This column is fixed across deliveries.
+- `missionMCConfig.arrivalStatesClient` and `.arrivalStatesHost` accept
+  paired 6-by-N target-centered LVLH states in metres and m/s. Preserve
+  trial indexing and generate each host state from the matching client
+  realization where possible. `FABER_relative_state` converts synchronous
+  inertial and rotating RTN/LVLH states in both directions. Current
+  analytical far-field budget legs still provide costs and durations only.
+- `missionMCConfig.clientGeometry`, `.hostGeometry`, and
+  `assemblyOptions.pathGeometry` take the same sphere/capsule fields as
+  `FABER_clearance_m`, with optional `extraRadius_m` for footprint and
+  margin. Only include obstacles whose clearance is mandatory on the whole
+  checked path. Authorized surfaces need a separate approach/contact model.
+- `missionMCConfig.terminalCorridorHalfWidth_m` selects a negative V-bar
+  lateral clearance check inside the KOZ. Supply a mission-derived width.
+- `assemblyOptions.maxTransferDV_mps` caps the sum of the gate-to-gate
+  impulses. Existing speed and controlled-acceleration caps remain
+  configurable. The budget now uses v4 and accounts for departure and
+  arrival times as well as the coast. Inspect
+  `assemblyResult.rejectionByDirection` for the first failed segment by
+  interface, method, and direction (outbound, return).
+
+Model limitations for the PM3 output set:
+
+1. To close the handoff, carry a common epoch, target and chaser inertial
+   states, vehicle mass, and maneuver execution errors through both
+   legs. Perturb inertial injection/target orbit and burn errors, propagate
+   both spacecraft, and transform the resulting correlated states at
+   the entry event. Propagate the capture/release and departure states
+   before solving the next far-field leg. Handoffs built from independent
+   offsets miss these correlations and cannot quantify interface error.
+2. The nominal RPO model assumes GO decisions and ideal holds. Zones and
+   centerline clearance alone cannot assess timed gates, hold uncertainty,
+   navigation outages, loss of control, or retreat. Keep PM3 Table 6's
+   conditional fault and CAM analysis separate from the reserve until fault
+   likelihoods, recovery paths, and effective firing groups are known.
+3. Assembly feasibility still uses sampled translation and ideal impulses.
+   Add as-built geometry per installation step, loaded/unloaded swept
+   volumes, docking/berthing contact rules, attitude-dependent force and
+   torque, and missed-burn drift. Refine near-boundary trajectories with
+   event detection. The current default geometry and acceleration limits
+   require mission inputs before making clearance or propulsion claims.
+4. PM3 Table 15 and Appendix G require relative navigation and pointing.
+   Add attitude and target geometry for line of sight, field of view,
+   occlusion and lighting. An estimator/control simulation should log
+   truth versus estimate, covariance consistency, tracking error and
+   actuator saturation before assessing capture tolerances.
+5. The lifetime delta-V sum combines Taxi and assembly line items for
+   bookkeeping. Use vehicle-specific mass histories and Isp for propellant
+   sizing, and a resource-constrained schedule for mission duration.
+   Neither the raw P95 nor summed known TOF is a vehicle propellant or
+   calendar-duration estimate.
+
+The rest of this README describes the earlier deterministic study and
+its historical Monte Carlo code.
+
 # FABER — Facility for Autonomous Building and Expansion Robotics 
 
 Preliminary MATLAB mission analysis for an Assembly and Servicing Vehicle (ASV), including a mission-level **delta-V budget**, transfer times, rendezvous/proximity operations (RPO), assembly relocations, and a Monte Carlo study of RPO strategies.
@@ -85,7 +306,7 @@ The following are **defaults from the checked-in script**, not universal require
 | Abort delta-V | `DV_abort` | 1 | m/s per event |
 | Avoidance delta-V | `DV_CAM` | 1 | m/s per event |
 | General delta-V margin | `margin_fraction` | 0.05 | 5% |
-| Minimum major-event margin | `margin_minimum` | 10 | m/s |
+| Minimum deterministic powered-event margin | `margin_minimum` | 10 | m/s |
 
 **Important:** `N_modules_planned = mission_years * modules_per_year` is a *planning* value. The actual number of deliveries used in the budget is `N_deliveries = N_containers`, obtained from the selected structure configuration; `N_modules` is set to the same count. Edit the configuration script if you want to change the assembly architecture, container capacity, or installation positions.
 
@@ -137,7 +358,7 @@ These are **specified profile values**, not optimized maneuver times. The script
 - A single injection correction and a single disposal maneuver are budgeted.
 - Client orbit transfers are multiplied by `N_clients`; outbound and inbound Taxi RPO/far-field phases by `N_deliveries`.
 - Expected abort count is `abort_fraction * N_deliveries`; collision-avoidance count is `CAM_per_year * mission_years`. An expected count can be fractional—it is a budgeting assumption, not a literal event schedule.
-- The default delta-V margin is 5%. For **injection, client orbit transfer and disposal**, the added allowance is the larger of 5% or 10 m/s. Abort and momentum-unloading line items are **doubled**. This policy is preliminary, not derived from Monte Carlo confidence intervals.
+- The current delta-V margin policy is specified above. Momentum unloading uses the deterministic rule, and aborts and collision avoidance use the stochastic rule.
 - Some TOFs (e.g., aborts, collision avoidance, stationkeeping and momentum unloading) are `NaN`/unknown and **excluded** from the reported total modeled time. Therefore the displayed mission TOF is **not** a full seven-year mission timeline.
 - The script does **not** convert the final delta-V budget into propellant mass or account for changing vehicle mass using a full rocket-equation mass budget.
 

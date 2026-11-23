@@ -117,31 +117,54 @@ for i = 1:N
             char(methodC2(m))};
 
 
-        % Taxi -> Client
+       
+        %% TAXI -> CLIENT (UNLOADED)
+        
+        cfgClient = cfg;
+        cfgClient.massTaxi_kg = cfg.massTaxi_kg;
+        
         [client,why] = simulateApproach( ...
-            cfg,xc,dc,n,which,char(gateMode(m)));
+            cfgClient,xc,dc,n,which,char(gateMode(m)));
         
         if ~isempty(why)
             reason(i,m) = "Client: " + string(why);
             continue;
         end
         
-        % Taxi -> ATLANTE
+        %% PAYLOAD CAPTURE
+        
+        % Taxi has consumed fuel during client approach.
+        massAfterClient_kg = ...
+            cfgClient.massTaxi_kg - client.propellant_kg;
+        
+        if cfg.enablePayloadMassChange
+            capturedMass_kg = cfg.payloadMass_kg;
+        else
+            capturedMass_kg = 0;
+        end
+        
+        %% TAXI -> ATLANTE (LOADED)
+        
+        cfgHost = cfg;
+        
+        cfgHost.massTaxi_kg = ...
+            massAfterClient_kg + capturedMass_kg;
+        
         [host,why] = simulateApproach( ...
-            cfg,xh,dh,n,which,char(gateMode(m)));
+            cfgHost,xh,dh,n,which,char(gateMode(m)));
         
         if ~isempty(why)
             reason(i,m) = "ATLANTE: " + string(why);
             continue;
         end
-
-
-
-        % Calculate propellant with phase-specific Isp
-        cycleFuel = cyclePropellant( ...
-            client.dvPhase,host.dvPhase,cfg);
         
-        % Only enforce propulsion limits when enabled
+        %% COMPLETE RETRIEVAL CYCLE
+        
+        % Propellant from both approaches, with the mass change
+        % represented between the two sequences.
+        cycleFuel = ...
+            client.propellant_kg + host.propellant_kg;
+        
         if cfg.enablePropulsionConstraints && ...
                 cycleFuel > cfg.maxPropellantCycle_kg
         
@@ -150,11 +173,12 @@ for i = 1:N
         end
         
         if cfg.enablePropulsionConstraints && ...
-                client.dv+host.dv > cfg.maxDV_perCycle_mps
+                client.dv + host.dv > cfg.maxDV_perCycle_mps
         
             reason(i,m) = "Cycle DV limit";
             continue;
         end
+
 
 
         FuelCycle_kg(i,m) = cycleFuel;

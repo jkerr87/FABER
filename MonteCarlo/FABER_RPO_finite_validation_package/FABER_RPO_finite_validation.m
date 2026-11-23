@@ -61,15 +61,81 @@ switch mode
         end
 end
 
-[ii,mm]=find(mask);
-if isfield(cfg,'finiteMaxCandidates') && isfinite(cfg.finiteMaxCandidates)
-    keep = min(numel(ii),max(0,floor(cfg.finiteMaxCandidates)));
-    if keep<numel(ii)
-        warning(['Finite validation capped at %d of %d candidates. ' ...
-            'Results are a subset, not a complete population.'],keep,numel(ii));
-        ii=ii(1:keep); mm=mm(1:keep);
+
+%% STRATIFIED FINITE-THRUST CANDIDATE SELECTION
+% Spread validation across maneuver architectures.
+% Reproducible random ordering within each architecture.
+
+[iiAll,mmAll] = find(mask);
+
+if isfield(cfg,'finiteMaxCandidates') && ...
+        isfinite(cfg.finiteMaxCandidates)
+
+    maxCandidates = max(0,floor(cfg.finiteMaxCandidates));
+
+    % Preserve caller's random-number generator state
+    oldRng = rng;
+    rngCleanup = onCleanup(@() rng(oldRng));
+    rng(cfg.seed + 1000,'twister');
+
+    % Randomized trial lists for each architecture
+    candidates = cell(M,1);
+
+    for m = 1:M
+        trials = find(mask(:,m));
+
+        if ~isempty(trials)
+            trials = trials(randperm(numel(trials)));
+        end
+
+        candidates{m} = trials;
     end
+
+    nextCandidate = ones(M,1);
+
+    ii = zeros(0,1);
+    mm = zeros(0,1);
+
+    % Round-robin selection across architectures
+    while numel(ii) < maxCandidates
+
+        added = false;
+
+        for m = 1:M
+
+            k = nextCandidate(m);
+
+            if k <= numel(candidates{m})
+
+                ii(end+1,1) = candidates{m}(k);
+                mm(end+1,1) = m;
+
+                nextCandidate(m) = k+1;
+                added = true;
+
+                if numel(ii) >= maxCandidates
+                    break;
+                end
+            end
+        end
+
+        if ~added
+            break;
+        end
+    end
+
+    fprintf(['\nFinite validation: %d candidates ' ...
+        'selected across %d architectures.\n'], ...
+        numel(ii),numel(unique(mm)));
+
+else
+
+    % No cap: validate every eligible candidate
+    ii = iiAll;
+    mm = mmAll;
+
 end
+
 
 rows = cell(0,11);
 for q=1:numel(ii)
@@ -84,6 +150,14 @@ for q=1:numel(ii)
     why="";
     mass=cfg.massTaxi_kg; % continuous propellant mass across BOTH approaches
     for leg=1:2
+        % Add captured payload before return-to-ATLANTE approach.
+        if leg == 2 && ...
+                isfield(cfg,'enablePayloadMassChange') && ...
+                cfg.enablePayloadMassChange
+
+            mass = mass + cfg.payloadMass_kg;
+        end
+
         if leg==1
             approach=rec.Client;
         else

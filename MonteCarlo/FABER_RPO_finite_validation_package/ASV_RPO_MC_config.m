@@ -53,6 +53,7 @@ cfg.Re_km = 6378.1363;
 % CHANGED: set reference altitude for this trade study.
 % Use 457.25 to reproduce the older orbit assumption.
 cfg.h_km = 680.12;
+cfg.h_km = 457.25;
 
 %% 4. INITIAL RELATIVE STATES - UNCHANGED
 
@@ -174,9 +175,23 @@ cfg.maxSpeed_final_mps = 0.1;
 
 %% 9. PROPULSION CONSTRAINTS
 
+
+
+%% TAXI LOADED / UNLOADED MASS
+
+% Initial Taxi wet mass before client retrieval [kg].
+% This is the reference mission mass before module capture.
+cfg.massTaxi_kg = 3503.59;
+
+% Captured payload mass [kg].
+% REPLACE with actual transported module + container mass.
+cfg.payloadMass_kg = 0;
+
+% Enable mass change after client capture.
+cfg.enablePayloadMassChange = true;
+
 % Preliminary propulsion inputs; replace with qualified subsystem values.
 cfg.thrust_N = 22;              % effective commanded translational thrust
-cfg.massTaxi_kg = 3503.59;     % reference initial wet mass
 cfg.Isp_s = 293;               % ILLUSTRATIVE assumption - verify thruster Isp
 cfg.nActiveThrusters = 4;       % usable co-aligned thrusters; set actual count
 cfg.thrustEfficiency = 1.0;      % factor for usable force, 0 < eta <= 1
@@ -225,7 +240,7 @@ cfg.propulsion.main.thrusterForces_N = [];
 % TAXI RCS - AMPAC-ISP
 cfg.propulsion.rcs.thrust_N = 22;
 cfg.propulsion.rcs.nInstalled = 20;
-cfg.propulsion.rcs.nActiveThrusters = 1;
+cfg.propulsion.rcs.nActiveThrusters = 4;
 cfg.propulsion.rcs.Isp_s = 293.0;
 cfg.propulsion.rcs.thrustEfficiency = 1.0;
 cfg.propulsion.rcs.thrusterDirections_LVLH = [];
@@ -283,6 +298,32 @@ cfg.GO_HP2 = true;
 cfg.GO_AZ = true;
 cfg.GO_KOZ = true;
 cfg.GO_capture = true;
+
+
+%% INITIAL TAXI DEPARTURE FROM ATLANTE
+
+cfg.departure.enabled = true;
+
+% Preliminary geometry: change to match CONOPS
+cfg.departure.initialState = ...
+    [0;-5;0;0;0;0];
+
+cfg.departure.finalState = ...
+    [0;-350;0;0;0;0];
+
+% One initial departure maneuver
+cfg.departure.TOF_min = 60;
+
+% Use RCS for preliminary departure
+cfg.departure.propulsion = 'rcs';
+
+% Feasibility assumptions
+cfg.departure.maxSpeed_mps = 1.0;
+cfg.departure.minSeparation_m = 5;
+
+cfg.departure.posTolerance_m = 1;
+cfg.departure.velTolerance_mps = 0.01;
+
 
 %% 12. CONOPS LIMITATIONS
 

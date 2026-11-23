@@ -6,14 +6,24 @@
 %
 % Transfer visualizations are ideal two-body impulsive trajectories.
 
-clear; clc; close all;
+clearvars -except missionMCConfig assemblyOptions runMissionMC missionArchitecture missionParkingConfig
+clc; close all;
+if ~exist('runMissionMC','var')
+    runMissionMC = true;
+end
+if ~exist('missionArchitecture','var')
+    missionArchitecture = 1;
+end
+if ~exist('assemblyOptions','var')
+    assemblyOptions = struct();
+end
 
 %% ================================================================
 %  1. CONSTANTS AND MISSION INPUTS
 % ================================================================
 % Constants
 addpath('ORBMECH');
-addpath('MonteCarlo');
+addpath(fullfile('MonteCarlo','FABER_safety_v3_nine_phase'),'-begin');
 addpath('config');
 addpath('ProximityOps');
 addpath('NominalOps');
@@ -85,9 +95,6 @@ DV_CAM = 1; % 1 m/s LIT
 % MARGINS ===============================================================
 margin_fraction = 0.05;
 margin_minimum = 10;
-abort_margin_factor = margin_fraction;
-CAM_margin_factor = margin_fraction;
-momentum_margin_factor = margin_fraction;
 
 % PROXIMITY OPERATIONS ==================================================
 % VEICOLETTO PROXIMITY OPS
@@ -440,19 +447,6 @@ result_rendezvous = proximity_operations_v2( ...
     mu,R_E,h_target,X0_RPO,rpo);
 
 
-
-%% VALIDATION - SINGLE-TRANSFER HCW
-
-cfgValidation = ASV_RPO_MC_config();
-
-cfgValidation.mu_km3s2 = mu;
-cfgValidation.Re_km = R_E;
-cfgValidation.h_km = h_target;
-
-cfgValidation.x0_client = X0_RPO;
-
-%V = FABER_RPO_validate_baseline( ...
-%    cfgValidation,result_rendezvous);
 
 %% INDIVIDUAL HOMING MANEUVERS
 
@@ -1052,11 +1046,8 @@ end
 % ================================================================
 % Veicoletto PROXIMITY OPS --> just consistent "final approaches"
 
-% VEICOLETTO PROXIMITY OPS
-assemblyResult = assembly_relocations_v2( ...
-    mu, R_E, h_target, 101, ...
-    timesMin, hostPoint, modulePoints);
-
+assemblyResult = assembly_relocations_v4( ...
+    mu,R_E,h_target,101,timesMin,hostPoint,modulePoints,assemblyOptions);
 
 %% ASSEMBLY RELOCATION RESULTS
 
@@ -1067,9 +1058,8 @@ DV_assembly_return = sum(assemblyResult.DV_return);
 DV_assembly_relocation = assemblyResult.DV;
 
 % Aggregate transfer times
-% Both legs currently use the same duration
-TOF_assembly_out = sum(assemblyResult.timePerLeg_min);
-TOF_assembly_return = sum(assemblyResult.timePerLeg_min);
+TOF_assembly_out = sum(assemblyResult.totalTimePerDirection_min(:,1));
+TOF_assembly_return = sum(assemblyResult.totalTimePerDirection_min(:,2));
 
 TOF_assembly_relocation = assemblyResult.TOF_min;
 
@@ -1110,6 +1100,36 @@ sk_results = station_keeping(mass_idle, rho, area_drag, Cd_Taxi, SK_altitude, mi
 % Assignment for the final budget
 DV_SK = sk_results.DV_SK;
 DV_stationkeeping = DV_SK;
+
+% Relative parking uses the legacy idle Taxi properties and phase-A
+% reference defaults. Override the vehicle structs for a specific mission.
+parking = struct();
+parking.Taxi = struct('mass_kg',mass_idle,'area_m2',area_drag,'Cd',Cd_Taxi, ...
+    'staticDistance_m',1000,'ellipseCenter_m',1000,'ellipseRadialAmplitude_m',20);
+stackMass_kg = 4805.47+1813.62+1813.62;
+parking.ATLANTE = struct('mass_kg',stackMass_kg,'area_m2',(stackMass_kg/100)^(2/3), ...
+    'Cd',2.2,'staticDistance_m',250,'ellipseCenter_m',250,'ellipseRadialAmplitude_m',20);
+parking.Host = struct('mass_kg',1000,'area_m2',8,'Cd',2.2);
+parking.TaxiYears = mission_years;
+parking.AtlanteYears = mission_years;
+parking.Options = struct('altitude_m',1000*h_target, ...
+    'rho_kgm3',9.158e-12*exp(-(h_target-350)/53.298));
+if exist('missionParkingConfig','var')
+    fields = fieldnames(missionParkingConfig);
+    for k = 1:numel(fields)
+        parking.(fields{k}) = missionParkingConfig.(fields{k});
+    end
+end
+validateattributes(parking.TaxiYears,{'numeric'},{'scalar','real','finite','nonnegative'});
+validateattributes(parking.AtlanteYears,{'numeric'},{'scalar','real','finite','nonnegative'});
+taxiReference = struct('mass_kg',parking.ATLANTE.mass_kg, ...
+    'area_m2',parking.ATLANTE.area_m2,'Cd',parking.ATLANTE.Cd);
+relativeSK.Taxi = run_FABER_Taxi_idle_SK(parking.Taxi,taxiReference,parking.Options);
+relativeSK.ATLANTE = run_FABER_Taxi_idle_SK(parking.ATLANTE,parking.Host,parking.Options);
+DV_relativeTaxi = relativeSK.Taxi.annualDV_mps*parking.TaxiYears;
+DV_relativeAtlante = relativeSK.ATLANTE.annualDV_mps*parking.AtlanteYears;
+fprintf('Taxi relative stationkeeping: %.2f m/s lifetime\n',DV_relativeTaxi);
+fprintf('Atlante relative stationkeeping: %.2f m/s lifetime\n',DV_relativeAtlante);
 % Results output
 fprintf('\n====================================================\n');
 fprintf('STATION KEEPING CALCULATION\n');
@@ -1198,6 +1218,8 @@ maneuver_names = {
     'Stationkeeping'                      % 25
     'Momentum unloading'                  % 26
     'Disposal'                            % 27
+    'Taxi relative stationkeeping'         % 28
+    'Atlante relative stationkeeping'      % 29
 };
 
 %% ================================================================
@@ -1246,6 +1268,8 @@ DV_raw = [
     DV_stationkeeping
     DV_momentum_unloading
     DV_deorbit
+    DV_relativeTaxi
+    DV_relativeAtlante
 ];
 
 %% ================================================================
@@ -1294,6 +1318,8 @@ TOF_perEvent_min = [
     NaN
     NaN
     tof_deorbit/60
+    NaN
+    NaN
 ];
 
 %% ================================================================
@@ -1342,6 +1368,8 @@ N_events = [
     1
     1
     1
+    1
+    1
 ];
 
 %% ================================================================
@@ -1357,43 +1385,35 @@ assert(numel(DV_raw)==numel(TOF_perEvent_min), ...
 assert(numel(DV_raw)==numel(N_events), ...
     'Delta V and event-count lengths do not match.');
 
-assert(all(isfinite(DV_raw)), ...
-    'Undefined Delta V detected.');
-
-assert(all(DV_raw>=0), ...
+assemblyRows = startsWith(string(maneuver_names),'Assembly ');
+assert(all(isfinite(DV_raw(~assemblyRows))) && ~any(isinf(DV_raw)), ...
+    'Undefined delta-V outside the assembly relocation rows.');
+assert(all(DV_raw(isfinite(DV_raw))>=0), ...
     'Delta V must be non-negative.');
 
 %% ================================================================
 % DELTA V MARGINS
 % ================================================================
-% Default fractional margin for each maneuver.
-% Minimum allocation applied only to selected major events.
-%
-% The chosen policy is preliminary and not Monte Carlo-derived.
-
-DV_margin = DV_raw.*(1+margin_fraction);
-
-majorNames = [
-    "Initial ASV injection correction"
-    "Client orbit transfer"
-    "Disposal"
-];
-
-majorIdx = ismember(string(maneuver_names),majorNames);
-
-DV_margin(majorIdx) = DV_raw(majorIdx) + ...
-    max(margin_fraction.*DV_raw(majorIdx), ...
-        margin_minimum);
-
-% Special contingency multipliers
-abortIdx = strcmp(maneuver_names,'Aborts');
-momentumIdx = strcmp(maneuver_names,'Momentum unloading');
-
-DV_margin(abortIdx) = 2*DV_raw(abortIdx);
-DV_margin(momentumIdx) = 2*DV_raw(momentumIdx);
-
-% Ideal zero-DV holds remain zero.
-% Real holding control must be allocated separately.
+% Group the calculated components of each far-field event.
+stochastic = false(size(DV_raw));
+stochastic([7:11 16:22]) = true; % RPO, aborts and CAM
+DV_margin = FABER_apply_DV_margin(DV_raw,stochastic, ...
+    margin_fraction,margin_minimum);
+for indices = {3:6,12:15}
+    idx = indices{1};
+    eventDV = sum(DV_raw(idx));
+    if eventDV>0
+        eventMargined = FABER_apply_DV_margin(eventDV,false, ...
+            margin_fraction,margin_minimum);
+        DV_margin(idx) = DV_raw(idx)*(eventMargined/eventDV);
+    end
+end
+% These two rows each aggregate every actual assembly relocation.
+DV_margin(assemblyRows) = [ ...
+    sum(FABER_apply_DV_margin(assemblyResult.DV_outbound,false, ...
+        margin_fraction,margin_minimum)); ...
+    sum(FABER_apply_DV_margin(assemblyResult.DV_return,false, ...
+        margin_fraction,margin_minimum))];
 
 %% ================================================================
 % LIFETIME TOTALS
@@ -1454,6 +1474,10 @@ fprintf('========================================\n');
 
 fprintf('Raw lifetime DV:      %.5f m/s\n',DV_total_raw);
 fprintf('Margined lifetime DV: %.5f m/s\n',DV_total_margin);
+if ~assemblyResult.feasible
+    fprintf('Assembly round trips unresolved: %d of %d\n', ...
+        nnz(~any(assemblyResult.feasibleByModuleMethod,2)),assemblyResult.Nmodules);
+end
 
 fprintf('Modelled TOF: %.2f hours\n',TOF_modelled_hr);
 fprintf('Modelled TOF: %.2f days\n',TOF_modelled_days);
@@ -1534,80 +1558,59 @@ writetable(BudgetTable, ...
 
 
 
-%% ================================================================
-% RPO MONTE CARLO - OPTIMIZATION STUDY
-% ================================================================
+%% NINE-PHASE RPO MONTE CARLO AND MISSION BUDGET
 
-cfg = ASV_RPO_MC_config();
-
-% Same orbital parameters as mission analysis
-cfg.mu_km3s2 = mu;
-cfg.Re_km = R_E;
-cfg.h_km = h_target;
-
-% Same initial conditions
-cfg.x0_client = X0_RPO;
-cfg.x0_host = X0_host;
-
-% Run
-MC_RPO = ASV_RPO_MonteCarlo(cfg);
-
-% Analyze selected transfer counts and Pareto frontier
-A = FABER_RPO_analyze_results(MC_RPO);
-
-% P95 results
-DV_P95 = MC_RPO.P95_DV_cycle_mps;
-TOF_P95 = MC_RPO.P95_TOF_cycle_min;
-
-
-%% ANALYZE TRANSFER COUNT VS DELTA V
-
-T = MC_RPO.trialTable;
-
-fprintf('\nHOMING TRANSFER COUNT ANALYSIS\n');
-
-for Nh = 1:4
-
-    idx = T.ClientN_Homing == Nh;
-
-    if any(idx)
-
-        fprintf(['Nh = %d | Samples = %d | ', ...
-            'Mean Cycle DV = %.3f m/s | ', ...
-            'Mean Cycle TOF = %.1f min\n'], ...
-            Nh,nnz(idx), ...
-            mean(T.CycleDV_mps(idx)), ...
-            mean(T.CycleTOF_min(idx)));
-
+if runMissionMC
+    cfg = ASV_RPO_MC_config();
+    % Preferred Taxi architecture and sizing payload from PM3, section 3.
+    cfg.methodsH2 = {'Vbar'};
+    cfg.methodsC1 = {'Rbar'};
+    cfg.methodsC2 = {'GeneralHCW'};
+    cfg.gateModes = {'FlyThrough'};
+    cfg.homing1_min = [30 100];
+    cfg.maxBurnFraction = 0.10;
+    cfg.payloadMass_kg = 2000;
+    cfg.makePlots = false;
+    cfg.saveCSV = false;
+    cfg.x0_client = X0_RPO;
+    cfg.x0_host = X0_host;
+    if exist('missionMCConfig','var')
+        fields = fieldnames(missionMCConfig);
+        for k = 1:numel(fields)
+            cfg.(fields{k}) = missionMCConfig.(fields{k});
+        end
     end
+    cfg.mu_km3s2 = mu;
+    cfg.Re_km = R_E;
+    cfg.h_km = h_target;
 
-
-end
-
-% Plot transfer count vs complete-cycle Delta V
-figure('Color','w');
-
-scatter(T.ClientN_Homing,T.CycleDV_mps,35,'filled');
-
-xlabel('Number of client homing transfers');
-ylabel('Complete retrieval cycle Delta V [m/s]');
-title('Influence of Homing Transfer Count on Delta V');
-grid on;
-
-T = MC_RPO.trialTable;
-DV = MC_RPO.DV_phase_mps;
-
-fprintf('\nCLIENT HOMING COUNT VS HOMING DV\n');
-
-for Nh = 1:4
-    idx = T.ClientN_Homing == Nh;
-
-    if any(idx)
-        fprintf('Nh=%d | N=%d | Mean DV=%.4f m/s\n', ...
-            Nh, nnz(idx), mean(DV(idx,1)));
+    MC_RPO = FABER_RPO_9phase_MC(cfg);
+    rpoRows = [7:11 16:20];
+    MissionMC = FABER_MC_mission_budget(BudgetTable,MC_RPO,rpoRows,missionArchitecture, ...
+        10000,cfg.seed);
+    fprintf(['\nRPO cycle acceptance: %.1f%% | Independent delivery ' ...
+        'campaign acceptance: %.3g\n'], ...
+        100*MissionMC.cycleAcceptance,MissionMC.campaignAcceptance);
+    fprintf(['Feasible-campaign P95 raw delta-V: %.3f m/s | ' ...
+        'P95 known TOF: %.1f min\n'], ...
+        MissionMC.P95RawDV_mps,MissionMC.P95KnownTOF_min);
+    fprintf('Feasible-campaign P95 margined delta-V: %.3f m/s\n', ...
+        MissionMC.P95MarginedDV_mps);
+    if ~isempty(MissionMC.unknownDVRows)
+        fprintf('P95 subtotal of known delta-V: %.3f m/s\n', ...
+            MissionMC.P95KnownRawDV_mps);
+        fprintf('P95 margined subtotal of known delta-V: %.3f m/s\n', ...
+            MissionMC.P95KnownMarginedDV_mps);
     end
+    writetable(MissionMC.trials,'FABER_MC_Mission_Trials.csv');
+    RPO_MC_Trials = table(MC_RPO.valid(:,missionArchitecture), ...
+        MC_RPO.CycleDV_mps(:,missionArchitecture), ...
+        MC_RPO.CycleTOF_min(:,missionArchitecture), ...
+        MC_RPO.rejectionReason(:,missionArchitecture), ...
+        'VariableNames',{'Feasible','DV_mps','TOF_min','RejectionReason'});
+    writetable(RPO_MC_Trials,'FABER_MC_RPO_Trials.csv');
+    plot_FABER_mission_MC(MC_RPO,MissionMC,missionArchitecture);
 end
-
 
 %% ================================================================
 %  LOCAL FUNCTIONS

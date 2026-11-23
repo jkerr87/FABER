@@ -2,13 +2,13 @@ function R = FABER_RPO_9phase_MC(cfg)
 % FABER_RPO_9PHASE_MC
 % Nine-phase, four-holding-point RPO Monte Carlo.
 %
-% Compares 18 combinations:
+% Compares 36 combinations with default gate modes:
 % Homing 2: GeneralHCW, Vbar, Rbar
 % Closing 1: GeneralHCW, Vbar, Rbar
 % Closing 2: GeneralHCW, Continuous
 %
 % All GO decisions assumed true.
-% No lateral corridor-width restriction.
+% Optional corridor and obstacle checks use sampled trajectory states.
 %
 % Requires:
 %   analytical_manos.m
@@ -16,11 +16,48 @@ function R = FABER_RPO_9phase_MC(cfg)
 
 %checkConfig(cfg);
 
+originalRng = rng;
+restoreRng = onCleanup(@() rng(originalRng));
 rng(cfg.seed,'twister');
+validateattributes(cfg.N,{'numeric'},{'scalar','integer','positive','finite'});
+arrivalClient = option(cfg,'arrivalStatesClient',[]);
+arrivalHost = option(cfg,'arrivalStatesHost',[]);
+if ~isempty(arrivalClient)
+    validateattributes(arrivalClient,{'numeric'},{'real','finite','size',[6 cfg.N]});
+end
+if ~isempty(arrivalHost)
+    validateattributes(arrivalHost,{'numeric'},{'real','finite','size',[6 cfg.N]});
+end
+corridor = option(cfg,'terminalCorridorHalfWidth_m',Inf);
+validateattributes(corridor,{'numeric'},{'scalar','real','nonnegative'});
+
+validateattributes(cfg.thrust_N,{'numeric'},{'scalar','positive','finite'});
+validateattributes(cfg.nActiveThrusters,{'numeric'},{'scalar','integer','positive'});
+validateattributes(cfg.thrustEfficiency,{'numeric'},{'scalar','>',0,'<=',1});
+validateattributes(cfg.maxBurnFraction,{'numeric'},{'scalar','>',0,'<=',1});
+if ~isempty(cfg.thrusterDirections_LVLH)
+    assert(size(cfg.thrusterDirections_LVLH,1)==3, ...
+        'thrusterDirections_LVLH must be 3xN');
+    assert(numel(cfg.thrusterForces_N)==size(cfg.thrusterDirections_LVLH,2), ...
+        'One force is required for every directional thruster');
+    assert(all(cfg.thrusterForces_N>0), 'Thruster forces must be positive');
+    assert(exist('linprog','file')==2, ...
+        'Directional thruster allocation requires Optimization Toolbox linprog');
+end
+validateattributes(cfg.massTaxi_kg,{'numeric'},{'scalar','positive','finite'});
+validateattributes(cfg.Isp_s,{'numeric'},{'scalar','positive','finite'});
+assert(cfg.shellRadius_m(1)>0 && cfg.shellRadius_m(2)>=cfg.shellRadius_m(1));
+assert(ismember(lower(string(cfg.initialPositionMode)), ...
+    ["alongtrack","shell","volume"]));
+assert(cfg.maxBurnFraction>0 && cfg.maxBurnFraction<=1);
+assert(cfg.maxPropellantCycle_kg>=0);
+
 
 % mean motion
 n = sqrt(cfg.mu_km3s2 / ...
     (cfg.Re_km+cfg.h_km)^3);
+clientH_km = option(cfg,'clientH_km',cfg.h_km);
+nClient = sqrt(cfg.mu_km3s2/(cfg.Re_km+clientH_km)^3);
 
 %% 1. GENERATE ALL METHOD COMBINATIONS
 % homing 2, closing 1, closing 2, "gate mode" for HP4
@@ -62,6 +99,12 @@ end
 
 DV = nan(N,M,2);
 TOF = nan(N,M,2);
+FuelCycle_kg = nan(N,M);
+BurnRatioCycle = nan(N,M);
+BurnTimeCycle_s = nan(N,M);
+BurnTimePhase_s = nan(N,M,2,9);
+BurnFractionPhase = nan(N,M,2,9);
+FuelPhase_kg = nan(N,M,2,9);
 
 % Nine phases for each approach
 DVphase = nan(N,M,2,9);
@@ -69,15 +112,24 @@ TOFphase = nan(N,M,2,9);
 
 reason = strings(N,M);
 records = cell(N,M);
-% Each accepted approach carries its own exact maneuver-event history.
+clientCandidates = cell(N,M);
+initialStates = nan(6,N,2);
 
 %% 3. PAIRED MONTE CARLO
 
 for i = 1:N
 
     % Same initial states used across all method combinations
-    xc = sampleState(cfg.x0_client,cfg.dx0_client);
-    xh = sampleState(cfg.x0_host,cfg.dx0_host);
+    xc = sampleState(cfg.x0_client,cfg.dx0_client,cfg);
+    xh = sampleState(cfg.x0_host,cfg.dx0_host,cfg);
+    if ~isempty(arrivalClient)
+        xc = arrivalClient(:,i);
+    end
+    if ~isempty(arrivalHost)
+        xh = arrivalHost(:,i);
+    end
+    initialStates(:,i,1) = xc;
+    initialStates(:,i,2) = xh;
 
     % Same sampled design used across all methods
     dc = sampleDesign(cfg,xc);
@@ -91,18 +143,49 @@ for i = 1:N
             char(methodC2(m))};
 
 
-        % Taxi -> Client
+        % Taxi -> Client (unloaded mass, fuel depleted during approach)
+        cfgClient=cfg;
+        cfgClient.h_km = clientH_km;
+        cfgClient.pathGeometry = option(cfg,'clientGeometry',struct());
+        cfgClient.terminalCorridorHalfWidth_m = corridor;
+        cfgClient.massTaxi_kg=cfg.massTaxi_kg;
         [client,why] = simulateApproach( ...
-            cfg,xc,dc,n,which,char(gateMode(m)));
+            cfgClient,xc,dc,nClient,which,char(gateMode(m)));
         
         if ~isempty(why)
             reason(i,m) = "Client: " + string(why);
             continue;
         end
         
-        % Taxi -> ATLANTE
+        % Taxi -> ATLANTE: after capture, carrying module mass.
+        % Other callers can supply a coupled return handoff.
+        cfgHost=cfg;
+        cfgHost.pathGeometry = option(cfg,'hostGeometry',struct());
+        cfgHost.terminalCorridorHalfWidth_m = corridor;
+        capturedMass=0;
+        if cfg.enablePayloadMassChange
+            capturedMass=cfg.payloadMass_kg;
+        end
+        cfgHost.massTaxi_kg=cfg.massTaxi_kg-client.propellant_kg+capturedMass;
+        returnTransfer = [];
+        hostEntry = xh;
+        hostDesign = dh;
+        if isfield(cfg,'returnHandoff')
+            clientCandidates{i,m} = client;
+            [returnTransfer,why] = cfg.returnHandoff(client,cfgHost.massTaxi_kg);
+            if isempty(returnTransfer)
+                reason(i,m) = "Return transfer: " + string(why);
+                continue;
+            end
+            hostEntry = returnTransfer.arrivalLVLH;
+            cfgHost.massTaxi_kg = returnTransfer.massArrival_kg;
+            if norm(hostEntry-xh)>1e-9
+                hostDesign = sampleDesign(cfg,hostEntry);
+            end
+            initialStates(:,i,2) = hostEntry;
+        end
         [host,why] = simulateApproach( ...
-            cfg,xh,dh,n,which,char(gateMode(m)));
+            cfgHost,hostEntry,hostDesign,n,which,char(gateMode(m)));
         
         if ~isempty(why)
             reason(i,m) = "ATLANTE: " + string(why);
@@ -110,12 +193,37 @@ for i = 1:N
         end
 
 
-        if client.dv+host.dv > ...
-                cfg.maxDV_perCycle_mps
+
+        % Calculate propellant with phase-specific Isp
+        cycleFuel = client.propellant_kg + host.propellant_kg;
+        
+        % Only enforce propulsion limits when enabled
+        if cfg.enablePropulsionConstraints && ...
+                cycleFuel > cfg.maxPropellantCycle_kg
+        
+            reason(i,m) = "Cycle propellant allocation";
+            continue;
+        end
+        
+        if cfg.enablePropulsionConstraints && ...
+                client.dv+host.dv > cfg.maxDV_perCycle_mps
+        
             reason(i,m) = "Cycle DV limit";
             continue;
         end
 
+
+        FuelCycle_kg(i,m) = cycleFuel;
+        BurnTimeCycle_s(i,m) = client.totalBurnTime_s + host.totalBurnTime_s;
+        % Ratio is the largest phase-level impulsive-burn fraction,
+        % not the duration of the entire retrieval cycle.
+        BurnRatioCycle(i,m) = max([client.burnFractionPhase,host.burnFractionPhase]);
+        BurnTimePhase_s(i,m,1,:) = reshape(client.burnTimePhase_s,1,1,1,9);
+        BurnTimePhase_s(i,m,2,:) = reshape(host.burnTimePhase_s,1,1,1,9);
+        BurnFractionPhase(i,m,1,:) = reshape(client.burnFractionPhase,1,1,1,9);
+        BurnFractionPhase(i,m,2,:) = reshape(host.burnFractionPhase,1,1,1,9);
+        FuelPhase_kg(i,m,1,:) = reshape(client.fuelPhase_kg,1,1,1,9);
+        FuelPhase_kg(i,m,2,:) = reshape(host.fuelPhase_kg,1,1,1,9);
         DV(i,m,1) = client.dv;
         DV(i,m,2) = host.dv;
 
@@ -134,9 +242,13 @@ for i = 1:N
 
         records{i,m} = struct( ...
             'Client',client, ...
+            'ReturnTransfer',returnTransfer, ...
             'ATLANTE',host, ...
+            'massOutboundStart_kg',cfgClient.massTaxi_kg, ...
+            'massReturnStart_kg',cfgHost.massTaxi_kg, ...
+            'capturedMass_kg',capturedMass, ...
             'designClient',dc, ...
-            'designATLANTE',dh);
+            'designATLANTE',hostDesign);
     end
 end
 
@@ -157,6 +269,9 @@ P95ATLANTEDV_mps = nan(M,1);
 P95CycleDV_mps = nan(M,1);
 MedianCycleDV_mps = nan(M,1);
 P95CycleTOF_min = nan(M,1);
+P95FuelCycle_kg = nan(M,1);
+P95BurnTimeCycle_s = nan(M,1);
+P95MaxPhaseBurnFraction = nan(M,1);
 
 CommonP95CycleDV_mps = nan(M,1);
 
@@ -179,6 +294,9 @@ for m = 1:M
 
         P95CycleTOF_min(m) = ...
             p95(cycleTOF(ok,m));
+        P95FuelCycle_kg(m) = p95(FuelCycle_kg(ok,m));
+        P95BurnTimeCycle_s(m) = p95(BurnTimeCycle_s(ok,m));
+        P95MaxPhaseBurnFraction(m) = p95(BurnRatioCycle(ok,m));
     end
 
     if any(common)
@@ -195,8 +313,23 @@ R.summary = table( ...
     Accepted,Acceptance, ...
     P95ClientDV_mps,P95ATLANTEDV_mps, ...
     MedianCycleDV_mps,P95CycleDV_mps, ...
-    P95CycleTOF_min,CommonP95CycleDV_mps);
+    P95CycleTOF_min,CommonP95CycleDV_mps, ...
+    P95FuelCycle_kg,P95BurnTimeCycle_s,P95MaxPhaseBurnFraction);
 
+% Discrete objective selection is performed within each scenario:
+% all candidate architectures share that scenario's sampled initial states.
+[selectedIdx,scenarioPareto] = selectCandidates( ...
+    cfg,cycleDV,cycleTOF,valid);
+R.selectedArchitecture = selectedIdx;
+R.scenarioPareto = scenarioPareto;
+R.selectedDV_mps = nan(N,1);
+R.selectedTOF_min = nan(N,1);
+for i = 1:N
+    if isfinite(selectedIdx(i))
+        R.selectedDV_mps(i) = cycleDV(i,selectedIdx(i));
+        R.selectedTOF_min(i) = cycleTOF(i,selectedIdx(i));
+    end
+end
 R.cfg = cfg;
 R.methods = [ ...
     methodH2 methodC1 methodC2 gateMode];
@@ -210,12 +343,20 @@ R.TOF_phase_min = TOFphase;
 
 R.CycleDV_mps = cycleDV;
 R.CycleTOF_min = cycleTOF;
+R.FuelCycle_kg = FuelCycle_kg;
+R.BurnTimeCycle_s = BurnTimeCycle_s;
+R.MaxPhaseBurnFraction = BurnRatioCycle;
+R.BurnTimePhase_s = BurnTimePhase_s;
+R.BurnFractionPhase = BurnFractionPhase;
+R.FuelPhase_kg = FuelPhase_kg;
 
 R.valid = valid;
 R.commonFeasible = common;
 
 R.rejectionReason = reason;
 R.records = records;
+R.clientCandidates = clientCandidates;
+R.initialStates_LVLH = initialStates;
 
 R.phaseNames = { ...
     'Homing 1','Holding 1', ...
@@ -261,13 +402,15 @@ rows = table( ...
     valid(:,m), ...
     cycleDV(:,m), ...
     cycleTOF(:,m), ...
+    FuelCycle_kg(:,m), BurnTimeCycle_s(:,m), BurnRatioCycle(:,m), ...
     reason(:,m), ...
     'VariableNames',{ ...
     'Attempt','Architecture', ...
     'Homing2','Closing1','Closing2', ...
     'HP4Gate', ...
     'Feasible','CycleDV_mps', ...
-    'CycleTOF_min','Reason'});
+    'CycleTOF_min','FuelCycle_kg','BurnTimeCycle_s', ...
+    'MaxPhaseBurnFraction','Reason'});
 
 
         T = [T;rows]; %#ok<AGROW>
@@ -460,10 +603,13 @@ windows = { ...
 phaseIndices = [1 3 5 7 9];
 
 traces = cell(1,9);
+transferDetails = cell(1,5);
 dvPhase = zeros(1,9);
 tofPhase = zeros(1,9);
 zoneEvents = cell(1,5);
-legs=cell(1,5);
+burnTimePhase = zeros(1,9);
+burnFractionPhase = zeros(1,9);
+fuelDVphase = zeros(1,9);
 %% 4. PROPAGATE AND VALIDATE EACH TRANSFER
 
 for k = 1:5
@@ -488,9 +634,24 @@ for k = 1:5
         return;
     end
 
-    % HARD TOTAL RELATIVE-SPEED CONSTRAINT
+    % For closing legs the user's speed bound may refer to
+    % rho-dot (inward closing speed), not total LVLH speed.
+    if k==3 || k==4
+        mode = lower(string(cfg.closingSpeedMode));
+        if mode=="radial"
+            speedForLimit = z.maxClosingSpeed;
+        elseif mode=="both"
+            speedForLimit = max(z.maxSpeed,z.maxClosingSpeed);
+        elseif mode=="total"
+            speedForLimit = z.maxSpeed;
+        else
+            error('Unknown closingSpeedMode: %s',cfg.closingSpeedMode);
+        end
+    else
+        speedForLimit = z.maxSpeed;
+    end
 
-    if z.maxSpeed > maxSpeed(k)+1e-9
+    if speedForLimit > maxSpeed(k)+1e-9
 
         reason = sprintf('phase%d_speed', ...
             phaseIndices(k));
@@ -499,12 +660,64 @@ for k = 1:5
 
     % OPTIONAL ACCELERATION LIMIT
 
-    if z.peakAcceleration > ...
-            cfg.maxPeakAccel_mps2
+    if cfg.enablePropulsionConstraints && ...
+        z.peakAcceleration > cfg.maxPeakAccel_mps2
 
         reason = sprintf('phase%d_acceleration', ...
             phaseIndices(k));
         return;
+    end
+
+
+
+    %% PHASE-SPECIFIC PROPULSION SCREENING
+    
+    % Five transfers correspond to nine-phase indices:
+    % H1=1, H2=3, C1=5, C2=7, Final=9
+    phaseNumber = phaseIndices(k);
+    
+    phaseCfg = FABER_RPO_phase_propulsion( ...
+        cfg,phaseNumber);
+    
+    if cfg.enablePropulsionConstraints
+    
+        % Thrust magnitude and direction
+        % Burn duration and 5% rule
+        % Continuous-control thrust feasibility
+        [burnOK,burnWhy,burnInfo] = ...
+            screenTransferBurns(z,phaseCfg);
+    
+    else
+    
+        % Original unconstrained propulsion case
+        burnOK = true;
+        burnWhy = '';
+    
+        burnInfo = struct( ...
+            'totalBurn_s',NaN, ...
+            'fraction',NaN);
+    
+    end
+    
+    if ~burnOK
+        reason = sprintf('phase%d_%s', ...
+            phaseNumber,burnWhy);
+        return;
+    end
+    
+    %% BRAKING DISTANCE
+    
+    if cfg.enablePropulsionConstraints && ...
+            cfg.checkBrakingDistance
+    
+        [brakeOK,brakeReason] = ...
+            checkBraking(z,ends{k},phaseCfg);
+    
+        if ~brakeOK
+            reason = sprintf('phase%d_%s', ...
+                phaseNumber,brakeReason);
+            return;
+        end
     end
 
 
@@ -522,12 +735,38 @@ for k = 1:5
     end
 
 
+    r = z.trajectory(1:3,:);
+    if FABER_path_clearance(r,cfg.pathGeometry) <= 0
+        reason = sprintf('phase%d_obstacle_clearance',phaseIndices(k));
+        return;
+    end
+    insideKOZ = vecnorm(r,2,1) <= cfg.KOZ_m;
+    if isfinite(cfg.terminalCorridorHalfWidth_m) && ...
+            any(r(2,insideKOZ)>0 | ...
+                hypot(r(1,insideKOZ),r(3,insideKOZ)) > ...
+                cfg.terminalCorridorHalfWidth_m)
+        reason = sprintf('phase%d_terminal_corridor',phaseIndices(k));
+        return;
+    end
+
     j = phaseIndices(k);
 
     traces{j} = z.trajectory;
-    legs{k} = z;
+    % Essential metadata for optional finite-thrust verification.
+    transferDetails{k} = struct( ...
+        'startState',z.startState, ...
+        'targetState',z.endState, ...
+        'TOF_s',z.TOF_s, ...
+        'method',string(family{k}), ...
+        'isImpulsive',z.isImpulsive, ...
+        'burn1',z.burn1, ...
+        'burn2',z.burn2, ...
+        'idealDV_mps',z.dvTotal);
     dvPhase(j) = z.dvTotal;
     tofPhase(j) = z.TOF_s/60;
+    burnTimePhase(j) = burnInfo.totalBurn_s;
+    burnFractionPhase(j) = burnInfo.fraction;
+    fuelDVphase(j) = z.dvTotal;
 end
 
 %% 5. HOLDING POINTS AND GO DECISIONS
@@ -550,6 +789,7 @@ for k = 1:4
 
     dvPhase(j) = d.hold(k)* ...
         cfg.holdDVrate_mps_per_min(k);
+    fuelDVphase(j) = dvPhase(j);
 end
 
 %% 6. RETURN RESULTS
@@ -560,45 +800,78 @@ s = struct( ...
     'dvPhase',dvPhase, ...
     'tofPhase',tofPhase, ...
     'trace',{traces}, ...
+    'transferDetails',{transferDetails}, ...
     'GO',true, ...
     'methods',{methods}, ...
     'holdingPoints_m',hp);
 
-% Record nominal events only after ALL nine phases are accepted.
-% This keeps the paired architecture/trial bookkeeping unchanged.
-events=struct('xPre',{},'dvNom',{},'phase',{},'vehicle',{},'index',{});
-phaseLabels={'Homing 1','Homing 2','Closing 1','Closing 2','Final approach'};
-for jj=1:5
-    zj=legs{jj};
-    if zj.isImpulsive
-        % Use the burn vectors accepted by the actual maneuver solver.
-        % In particular, analytical V-bar/R-bar transfers may have a
-        % duration at which re-solving the HCW boundary-value problem
-        % would be singular, despite their valid nominal propagation.
-        ev=FABER_capture_HCW_events( ...
-            starts{jj},ends{jj},zj.TOF_s,n,phaseLabels{jj}, ...
-            'Taxi',jj,600,zj.burn1_mps,zj.burn2_mps);
-        % Validate reconstructed impulses against the actual solver.
-        assert(norm(ev(1).dvNom-zj.burn1_mps)<1e-6, ...
-            'Saved first burn differs from nominal transfer');
-        assert(norm(ev(end).dvNom-zj.burn2_mps)<1e-6, ...
-            'Saved second burn differs from nominal transfer');
-    else
-        tt=linspace(0,zj.TOF_s,size(zj.trajectory,2));
-        ev=FABER_capture_continuous_events( ...
-            zj.trajectory,tt,phaseLabels{jj},'Taxi',jj,60);
-    end
-    events=[events ev]; %#ok<AGROW>
-    % Holding-point fault checkpoint: stationary ideal holding state.
-    % A genuine controlled hold requires an actual stationkeeping law.
-    if jj<=4
-        eh=struct('xPre',X{jj},'dvNom',nan(3,1), ...
-            'phase',sprintf('Holding %d control loss',jj), ...
-            'vehicle','Taxi','index',jj);
-        events(end+1)=eh; %#ok<AGROW>
-    end
+
+%% PHASE-SPECIFIC PROPELLANT ESTIMATE
+
+remainingMass = cfg.massTaxi_kg;
+fuelPhase = zeros(1,9);
+
+for jj = 1:9
+
+    phaseCfg = FABER_RPO_phase_propulsion(cfg,jj);
+
+    nextMass = remainingMass * exp( ...
+        -fuelDVphase(jj) / ...
+        (9.80665*phaseCfg.Isp_s));
+
+    fuelPhase(jj) = remainingMass-nextMass;
+
+    remainingMass = nextMass;
+
 end
-s.safetyEvents=events;
+
+
+s.terminalLVLH = z.trajectory(:,end);
+if z.isImpulsive
+    s.terminalLVLH(4:6) = s.terminalLVLH(4:6)+z.burn2;
+end
+s.elapsed_s = 60*s.tof;
+s.propellant_kg = sum(fuelPhase);
+s.fuelPhase_kg = fuelPhase;
+s.burnTimePhase_s = burnTimePhase;
+s.burnFractionPhase = burnFractionPhase;
+s.totalBurnTime_s = sum(burnTimePhase);
+
+%% Exact accepted maneuver safety events with mass at each checkpoint.
+% Captures only after complete 9-phase approach is accepted.
+if isfield(cfg,'safetySaveBurns') && cfg.safetySaveBurns
+    safetyEvents=struct('xPre',{},'dvNom',{},'phase',{}, ...
+        'vehicle',{},'index',{},'mass_kg',{});
+    labels={'Homing 1','Homing 2','Closing 1','Closing 2','Final approach'};
+    massLeg=cfg.massTaxi_kg;
+    for jj=1:5
+        z=transferDetails{jj};
+        if z.isImpulsive
+            ev=FABER_capture_HCW_events(z.startState,z.targetState, ...
+                z.TOF_s,n,labels{jj},'Taxi',jj,600,z.burn1,z.burn2);
+        else
+            ev=FABER_capture_continuous_events(traces{2*jj-1}, ...
+                linspace(0,z.TOF_s,size(traces{2*jj-1},2)), ...
+                labels{jj},'Taxi',jj,60);
+        end
+        for kk=1:numel(ev)
+            ev(kk).mass_kg=massLeg;
+        end
+        safetyEvents=[safetyEvents,ev]; %#ok<AGROW>
+        % Phase fuel is applied before the next transfer checkpoint.
+        massLeg=massLeg-fuelPhase(2*jj-1);
+        if jj<=4
+            holdEv=struct('xPre',X{jj},'dvNom',nan(3,1), ...
+                'phase',sprintf('Holding %d',jj), ...
+                'vehicle','Taxi','index',jj,'mass_kg',massLeg);
+            safetyEvents(end+1)=holdEv; %#ok<AGROW>
+            massLeg=massLeg-fuelPhase(2*jj);
+        end
+    end
+    s.safetyEvents=safetyEvents;
+else
+    s.safetyEvents=[];
+end
 
 s.gateMode = string(gateMode);
 s.HP4_velocity_mps = X{4}(4:6);
@@ -621,6 +894,9 @@ function [z,reason] = transfer(x0,xf,T,n,N,method)
 
 z = [];
 reason = '';
+burn1 = zeros(3,1);
+burn2 = zeros(3,1);
+isImpulsive = false;
 
 if ~isfinite(T) || T<=0
     reason = 'time';
@@ -630,6 +906,7 @@ end
 switch lower(method)
 
     case 'generalhcw'
+        isImpulsive = true;
 
         Phi = hcwSTM(n,T);
         B = Phi(1:3,4:6);
@@ -659,9 +936,9 @@ switch lower(method)
         stateAt = @(tau) hcwPath(n,tau,Xpost);
 
         peakAccel = 0;  % Impulses are idealized.
-        burn1Save=burn1;burn2Save=burn2;
 
     case {'vbar','rbar'}
+        isImpulsive = true;
 
         a = analytical_manos( ...
             x0(1:3),xf(1:3), ...
@@ -673,7 +950,13 @@ switch lower(method)
         end
 
         T = a.TOF_s;
-        dvTotal = a.DV_mps;
+        burn1 = a.burn1(:);
+        % Derive the arrival correction from the actual propagated
+        % HCW velocity, without assuming an analytical_manos burn2 field.
+        Xanalytical = [x0(1:3);x0(4:6)+burn1];
+        Xarrive = hcwPath(n,T,Xanalytical);
+        burn2 = xf(4:6)-Xarrive(4:6);
+        dvTotal = norm(burn1)+norm(burn2);
 
         Xpost = [x0(1:3); ...
                  x0(4:6)+a.burn1];
@@ -681,13 +964,6 @@ switch lower(method)
         stateAt = @(tau) hcwPath(n,tau,Xpost);
 
         peakAccel = 0;
-        burn1Save=a.burn1(:);
-        arrivalPre=hcwPath(n,T,[x0(1:3);x0(4:6)+burn1Save]);
-        burn2Save=xf(4:6)-arrivalPre(4:6,end);
-        % Check consistency of the analytical DV and the actual impulses.
-        if abs(norm(burn1Save)+norm(burn2Save)-dvTotal)>1e-5
-            reason='analytical_DV_mismatch';return;
-        end
 
         % Analytical maneuver assumes both endpoints
         % stationary on V-bar.
@@ -716,7 +992,6 @@ switch lower(method)
 
         dvTotal = trapz(tControl,uMag);
         peakAccel = max(uMag);
-        burn1Save=nan(3,1);burn2Save=nan(3,1);
 
     otherwise
         error('Unknown maneuver family: %s',method);
@@ -752,14 +1027,22 @@ z.TOF_s = T;
 
 z.trajectory = trajectory;
 z.stateAt = stateAt;
+z.startState=x0; z.endState=xf; z.meanMotion=n;
+z.method = string(method);
 
 z.maxSpeed = max( ...
     vecnorm(trajectory(4:6,:),2,1));
-
+rr = vecnorm(trajectory(1:3,:),2,1);
+rhoDot = sum(trajectory(1:3,:).*trajectory(4:6,:),1)./max(rr,eps);
+z.maxClosingSpeed = max([0,-rhoDot]);
+z.rhoDot_mps = rhoDot;
+z.isImpulsive = isImpulsive;
+z.burn1 = burn1;
+z.burn2 = burn2;
+z.totalBurn_s = NaN;
+z.maxBurn_s = NaN;
 z.peakAcceleration = peakAccel;
-z.burn1_mps=burn1Save;
-z.burn2_mps=burn2Save;
-z.isImpulsive=~strcmpi(method,'Continuous');
+
 
 end
 
@@ -878,15 +1161,182 @@ v = b(1)+(b(2)-b(1))*rand;
 
 end
 
-function x = sampleState(nom,dev)
-
+function x = sampleState(nom,dev,cfg)
+% Nominal rectangular perturbations or directionally uniform 2 km shell.
 x = nom+(2*rand(6,1)-1).*dev;
-
+mode = lower(string(cfg.initialPositionMode));
+if mode=="alongtrack"
+    return;
+end
+u = randn(3,1);
+u = u/norm(u);
+rMin = cfg.shellRadius_m(1);
+rMax = cfg.shellRadius_m(2);
+if mode=="shell"
+    radius = rMin+(rMax-rMin)*rand;
+else
+    radius = (rMin^3+(rMax^3-rMin^3)*rand)^(1/3);
+end
+x(1:3) = radius*u;
+if strcmpi(cfg.shellVelocityMode,'ball')
+    w = randn(3,1); w = w/norm(w);
+    x(4:6) = cfg.shellMaxRelSpeed_mps * rand^(1/3)*w;
+end
 end
 
 %% ============================================================
 % EMPIRICAL P95 (NEAREST RANK)
 % =============================================================
+
+function [selected,pareto] = selectCandidates(cfg,dv,tof,valid)
+[N,M] = size(valid);
+selected = nan(N,1);
+pareto = false(N,M);
+for i = 1:N
+    ids = find(valid(i,:));
+    if isempty(ids), continue; end
+    for m = ids
+        dominates = valid(i,:) & dv(i,:)<=dv(i,m)+1e-10 & ...
+            tof(i,:)<=tof(i,m)+1e-10 & ...
+            (dv(i,:)<dv(i,m)-1e-10 | tof(i,:)<tof(i,m)-1e-10);
+        pareto(i,m) = ~any(dominates);
+    end
+    frontier = find(pareto(i,:));
+    switch lower(string(cfg.objective))
+        case 'dv'
+            [~,k] = min(dv(i,ids)); selected(i) = ids(k);
+        case 'tof'
+            [~,k] = min(tof(i,ids)); selected(i) = ids(k);
+        case {'weighted','pareto'}
+            % 'pareto' leaves all non-dominated options in R.scenarioPareto;
+            % chooses an illustrative normalized compromise separately.
+            scaleDV = max(dv(i,frontier))-min(dv(i,frontier));
+            scaleTOF = max(tof(i,frontier))-min(tof(i,frontier));
+            score = cfg.weightDV*(dv(i,frontier)-min(dv(i,frontier)))/max(scaleDV,eps) + ...
+                    cfg.weightTOF*(tof(i,frontier)-min(tof(i,frontier)))/max(scaleTOF,eps);
+            [~,k] = min(score); selected(i) = frontier(k);
+        otherwise
+            error('objective must be dv, tof, weighted, or pareto');
+    end
+end
+end
+
+function [ok,reason] = checkBraking(z,xf,cfg)
+% Necessary radial stopping-distance screen at start and AZ/KOZ entries.
+% Evaluate stopping ability in the outward radial direction. It does not
+% certify finite-thrust braking or guarantee terminal-position accuracy.
+ok = true; reason = '';
+T = z.TOF_s;
+checkT = 0;
+scanT = linspace(0,T,max(101,cfg.eventScanN));
+X = z.stateAt(scanT);
+rhoGrid = vecnorm(X(1:3,:),2,1);
+for radius = [cfg.AZ_m,cfg.KOZ_m]
+    idx = find(rhoGrid(1:end-1)>radius & ...
+        rhoGrid(2:end)<=radius,1,'first');
+    if ~isempty(idx), checkT(end+1)=scanT(idx); end %#ok<AGROW>
+end
+for t0 = unique(checkT)
+    Y = z.stateAt(t0);
+    r = Y(1:3); v = Y(4:6);
+    rho = norm(r);
+    inward = max(0,-dot(r,v)/max(rho,eps));
+    if inward<=eps, continue; end
+    outward = r/max(rho,eps);
+    Fbrake = availableThrust(outward,cfg);
+    if Fbrake<=0
+        ok=false; reason='brake_direction'; return;
+    end
+    a = Fbrake/cfg.massTaxi_kg;
+    availableDistance = max(0,rho-norm(xf(1:3)) ...
+                                  -cfg.brakingMargin_m);
+    stopDistance = cfg.brakingSafetyFactor*inward^2/(2*a);
+    if stopDistance>availableDistance+1e-6
+        ok=false; reason='braking_distance'; return;
+    end
+end
+end
+
+function [ok,reason,B] = screenTransferBurns(z,cfg)
+% Impulses: screen EACH burn vector with usable thrust in its direction.
+% Continuous: screen sampled control acceleration vector against usable
+% directional thrust. No finite-burn repropagation in this function.
+ok = true; reason = '';
+B = struct('totalBurn_s',0,'fraction',0,'propellant_kg',0, ...
+    'individualBurnTime_s',[0 0],'individualBurnDV_mps',[0 0]);
+g0 = 9.80665;
+if z.isImpulsive
+    deltaV = [norm(z.burn1),norm(z.burn2)];
+    burnVec = {z.burn1,z.burn2};
+    mass = cfg.massTaxi_kg;
+    for ib=1:2
+        if deltaV(ib)<1e-12, continue; end
+        F = availableThrust(burnVec{ib}/deltaV(ib),cfg);
+        if F<=0
+            ok=false; reason='burn_direction'; return;
+        end
+        mFinal = mass*exp(-deltaV(ib)/(g0*cfg.Isp_s));
+        prop = mass-mFinal;
+        B.individualBurnTime_s(ib) = prop*g0*cfg.Isp_s/F;
+        B.individualBurnDV_mps(ib)=deltaV(ib);
+        B.propellant_kg = B.propellant_kg+prop;
+        mass=mFinal;
+    end
+    B.totalBurn_s = sum(B.individualBurnTime_s);
+    B.fraction = B.totalBurn_s/z.TOF_s;
+    if any(B.individualBurnTime_s>cfg.maxBurnDuration_s) ...
+            || B.totalBurn_s>z.TOF_s
+        ok=false; reason='burn_duration'; return;
+    end
+    if B.fraction>cfg.maxBurnFraction+1e-12
+        ok=false; reason='impulsive_fraction'; return;
+    end
+else
+    % Actual continuous control acceleration in LVLH, sampled densely.
+    tt=linspace(0,z.TOF_s,max(101,cfg.nThrustSamples));
+    [~,controlAccel]=quinticBoundaryState( ...
+        z.startState,z.endState,z.TOF_s,tt,z.meanMotion);
+    for j=1:numel(tt)
+        req=norm(controlAccel(:,j));
+        if req<1e-12, continue; end
+        F=availableThrust(controlAccel(:,j)/req,cfg);
+        if F<=0 || req>F/cfg.massTaxi_kg+1e-12
+            ok=false; reason='continuous_thrust'; return;
+        end
+    end
+end
+end
+
+function F = availableThrust(direction,cfg)
+% If a thruster direction matrix is given, maximize commanded force along
+% the requested LVLH direction while cancelling lateral force exactly.
+% Thruster directions must be expressed in the SAME LVLH frame as burns.
+% No attitude rotation or torques are modeled here.
+d=direction(:)/norm(direction);
+if isempty(cfg.thrusterDirections_LVLH)
+    F=cfg.nActiveThrusters*cfg.thrust_N*cfg.thrustEfficiency;
+    return;
+end
+U=cfg.thrusterDirections_LVLH;
+U=U./vecnorm(U,2,1);
+A=U.*reshape(cfg.thrusterForces_N,1,[]);
+P=eye(3)-d*d';
+options=optimoptions('linprog','Display','none');
+[w,~,exitflag]=linprog(-(d'*A)',[],[],P*A,zeros(3,1), ...
+    zeros(size(A,2),1),ones(size(A,2),1),options);
+if exitflag<=0 || isempty(w)
+    F=0;
+else
+    F=max(0,d'*A*w)*cfg.thrustEfficiency;
+end
+end
+
+function value = option(cfg,name,defaultValue)
+value = defaultValue;
+if isfield(cfg,name)
+    value = cfg.(name);
+end
+end
 
 function p = p95(a)
 
@@ -1090,5 +1540,42 @@ function g = sphereResidual(z,t,radius)
 
 Y = z.stateAt(t);
 g = norm(Y(1:3))-radius;
+
+end
+
+
+
+function fuel = cyclePropellant(clientDV,hostDV,cfg)
+% CYCLEPROPELLANT
+% Compute ideal cycle fuel consumption using the Isp assigned
+% to each of the nine phases.
+%
+% Mass decreases continuously across both approaches.
+% Payload capture/release mass changes are not modeled.
+
+g0 = 9.80665;
+
+initialMass = cfg.massTaxi_kg;
+mass = initialMass;
+
+for approach = 1:2
+
+    if approach == 1
+        phaseDV = clientDV;
+    else
+        phaseDV = hostDV;
+    end
+
+    for j = 1:9
+
+        phaseCfg = FABER_RPO_phase_propulsion(cfg,j);
+
+        mass = mass*exp( ...
+            -phaseDV(j)/(g0*phaseCfg.Isp_s));
+
+    end
+end
+
+fuel = initialMass-mass;
 
 end

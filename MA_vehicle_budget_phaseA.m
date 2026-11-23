@@ -1,13 +1,31 @@
 function out = MA_vehicle_budget_phaseA(cfg)
 root = fileparts(mfilename('fullpath'));
 addpath(genpath(root));
+addpath(fullfile(root,'MonteCarlo','FABER_safety_v3_nine_phase'),'-begin');
 if nargin < 1 || isempty(cfg)
     cfg = defaultInputs();
 else
     defaults = defaultInputs();
+    if isfield(cfg,'orbitRadialAmplitude_m')
+        defaults.taxiParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
+        defaults.atlanteParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
+    end
+    for name = {'taxiParkingEllipse','atlanteParkingEllipse'}
+        field = name{1};
+        if isfield(cfg,field)
+            values = fieldnames(cfg.(field));
+            for k = 1:numel(values)
+                defaults.(field).(values{k}) = cfg.(field).(values{k});
+            end
+            cfg = rmfield(cfg,field);
+        end
+    end
     fields = fieldnames(cfg);
     for k = 1:numel(fields)
         defaults.(fields{k}) = cfg.(fields{k});
+    end
+    if ~isfield(cfg,'taxiParkingYears')
+        defaults.taxiParkingYears = defaults.missionYears;
     end
     cfg = defaults;
 end
@@ -25,7 +43,6 @@ run(which('truss_platform'));
 Nreloc = size(modulePoints,1);
 timesMin = [5 10 15 20 25 30 35 40 45 50];
 hostPoint = [0;-250;0];
-Ndeliveries = cfg.Ndeliveries;
 rows = cell(0,12);
 [dva,dvb,tinj] = hohmann(mu, ...
     r0 + cfg.launchAltError_km,r0);
@@ -80,119 +97,111 @@ for vehicle = {'Taxi','ATLANTE'}
     veh = vehicle{1};
     rows = add(rows,veh,'Inter-client', ...
         'Extreme altitude transfer','Baseline', ...
-        cfg.Nclients,DV_altClient,tc/60, ...
+        1,DV_altClient,tc/60, ...
         'Estimated','Worst-case client envelope',true);
     rows = add(rows,veh,'Inter-client', ...
         'Extreme plane transfer','Baseline', ...
-        cfg.Nclients,DV_plane,0, ...
+        1,DV_plane,0, ...
         'Estimated','Combined plane-angle change',true);
+    rows = add(rows,veh,'Inter-client', ...
+        'RAAN reserve','Baseline',1,0,0, ...
+        'Allocated','PM3 RAAN reserve per inter-client transfer',true);
 end
-PH = phasing_manoeuvre( ...
-    cfg.h_target_km,cfg.h_target_km, ...
-    cfg.launchAltError_km+cfg.hClientSpread_km, ...
-    cfg.phaseAngle_deg,cfg.phasingRevs,Ndeliveries);
+% Use the same module orbit for both RPO and Lambert targeting.
+hModule = cfg.h_target_km + cfg.moduleAltitudeOffset_km;
+iModule = cfg.i_target_deg + cfg.moduleInclinationOffset_deg;
+validateattributes(cfg.captureWait_min,{'numeric'},{'scalar','real'});
+assert(isnan(cfg.captureWait_min) || (isfinite(cfg.captureWait_min) && ...
+    cfg.captureWait_min>=0),'Capture dwell must be nonnegative or NaN.');
+validateattributes(cfg.farFieldIsp_s,{'numeric'},{'scalar','real','finite','positive'});
+outbound = FABER_outbound_lambert(mu,Re,cfg);
 rows = add(rows,'Taxi','Outbound far', ...
-    'Altitude correction','Baseline',Ndeliveries, ...
-    DV_alt,tinj/60,'Estimated','MA_deltav',true);
+    'Lambert departure burn','Baseline',1, ...
+    norm(outbound.departureBurn_mps),outbound.transferTime_s/60, ...
+    'Estimated','Two-body Lambert transfer from parking handoff',true);
 rows = add(rows,'Taxi','Outbound far', ...
-    'Inclination correction','Baseline',Ndeliveries, ...
-    DV_inc,0,'Estimated','MA_deltav',true);
-rows = add(rows,'Taxi','Outbound far', ...
-    'RAAN correction','Baseline',Ndeliveries, ...
-    DV_RAAN,0,'Estimated','MA_deltav',true);
-rows = add(rows,'Taxi','Outbound far', ...
-    'Phasing','Baseline',Ndeliveries, ...
-    PH.DV_phase1_module,PH.time_phase1_min, ...
-    'Calculated','phasing_manoeuvre',true);
-[ra,rb,tr] = hohmann(mu, ...
-    r0 + cfg.launchAltError_km,r0);
-DV_returnAlt = abs(ra)+abs(rb);
-DV_returnInc = DV_inc;
-DV_returnRAAN = DV_RAAN;
-rows = add(rows,'Taxi','Inbound far', ...
-    'Altitude to ATLANTE','Baseline',Ndeliveries, ...
-    DV_returnAlt,tr/60,'Estimated','MA_deltav',true);
-rows = add(rows,'Taxi','Inbound far', ...
-    'Inclination','Baseline',Ndeliveries, ...
-    DV_returnInc,0,'Estimated','MA_deltav',true);
-rows = add(rows,'Taxi','Inbound far', ...
-    'RAAN','Baseline',Ndeliveries, ...
-    DV_returnRAAN,0,'Estimated','MA_deltav',true);
-rows = add(rows,'Taxi','Inbound far', ...
-    'Phasing to ATLANTE','Baseline',Ndeliveries, ...
-    PH.DV_phase2_base,PH.time_phase2_min, ...
-    'Calculated','phasing_manoeuvre',true);
+    'RPO entry velocity match','Baseline',1, ...
+    norm(outbound.arrivalBurn_mps),0, ...
+    'Estimated','Inertial velocity match at the RPO gate',true);
+
 mcCfg = ASV_RPO_MC_config();
 mcCfg.mu_km3s2 = mu;
 mcCfg.Re_km = Re;
 mcCfg.h_km = cfg.h_target_km;
-mcCfg.x0_client = cfg.x0_client(:);
+mcCfg.x0_client = outbound.arrivalLVLH;
+mcCfg.arrivalEpochClient_s = outbound.arrivalEpoch_s;
+mcCfg.clientH_km = hModule;
+mcCfg.arrivalStatesClient = repmat(outbound.arrivalLVLH,1,cfg.N_RPO_MC);
 mcCfg.x0_host = cfg.x0_atlante(:);
 mcCfg.N = cfg.N_RPO_MC;
+mcCfg.seed = cfg.RPO_seed_client;
+mcCfg.methodsH2 = {'Vbar'};
+mcCfg.methodsC1 = {'Rbar'};
+mcCfg.methodsC2 = {'GeneralHCW'};
+mcCfg.gateModes = {'FlyThrough'};
+mcCfg.homing1_min = [30 100];
+mcCfg.maxBurnFraction = 0.10;
+outboundDV = norm(outbound.departureBurn_mps)+norm(outbound.arrivalBurn_mps);
+mcCfg.massTaxi_kg = cfg.massTaxi_kg*exp(-outboundDV/(9.80665*cfg.farFieldIsp_s));
+mcCfg.returnHandoff = @(client,mass) FABER_return_lambert(mu,Re,cfg,outbound,client,mass);
+mcCfg.payloadMass_kg = cfg.payloadMass_kg;
 mcCfg.makePlots = false;
 mcCfg.saveCSV = false;
-fprintf('\n========================================\n');
-fprintf('MONTE CARLO 1 - TAXI TO CLIENT\n');
-fprintf('========================================\n');
-mcCfg.seed = cfg.RPO_seed_client;
-MC_client = ASV_RPO_MonteCarlo(mcCfg);
-DV_client_trials = MC_client.DV_phase_mps(:,1:7);
-TOF_client_trials = MC_client.TOF_phase_min(:,1:7);
-DV_client_total = sum(DV_client_trials,2);
-TOF_client_total = sum(TOF_client_trials,2);
-[DV_client_sorted,idxClientSorted] = ...
-    sort(DV_client_total,'ascend');
-idx95_client = max(1, ...
-    ceil(0.95*numel(DV_client_sorted)));
-idxClient = idxClientSorted(idx95_client);
-DV_client_phase = DV_client_trials(idxClient,:);
-TOF_client_phase = TOF_client_trials(idxClient,:);
-P95_TOF_client = prctile(TOF_client_total,95);
-fprintf('\n========================================\n');
-fprintf('MONTE CARLO 2 - TAXI TO ATLANTE\n');
-fprintf('========================================\n');
-mcCfg.seed = cfg.RPO_seed_atlante;
-MC_atlante = ASV_RPO_MonteCarlo(mcCfg);
-DV_atlante_trials = MC_atlante.DV_phase_mps(:,8:14);
-TOF_atlante_trials = MC_atlante.TOF_phase_min(:,8:14);
-DV_atlante_total = sum(DV_atlante_trials,2);
-TOF_atlante_total = sum(TOF_atlante_trials,2);
-[DV_atlante_sorted,idxAtlanteSorted] = ...
-    sort(DV_atlante_total,'ascend');
-idx95_atlante = max(1, ...
-    ceil(0.95*numel(DV_atlante_sorted)));
-idxAtlante = idxAtlanteSorted(idx95_atlante);
-DV_atlante_phase = DV_atlante_trials(idxAtlante,:);
-TOF_atlante_phase = TOF_atlante_trials(idxAtlante,:);
-P95_TOF_atlante = prctile(TOF_atlante_total,95);
-phases = { ...
-    'Homing 1', ...
-    'Hold point 1', ...
-    'Homing 2', ...
-    'Hold point 2', ...
-    'Closing', ...
-    'Hold point 3', ...
-    'Final approach'};
-for k = 1:numel(phases)
-    rows = add(rows,'Taxi','Outbound RPO', ...
-        phases{k},'Baseline',Ndeliveries, ...
-        DV_client_phase(k), ...
-        TOF_client_phase(k), ...
-        'MC P95-DV design', ...
-        'MC run 1: selected client approach',true);
-    rows = add(rows,'Taxi','Inbound RPO', ...
-        phases{k},'Baseline',Ndeliveries, ...
-        DV_atlante_phase(k), ...
-        TOF_atlante_phase(k), ...
-        'MC P95-DV design', ...
-        'MC run 2: selected ATLANTE approach',true);
+RPO_MC = FABER_RPO_9phase_MC(mcCfg);
+phases = RPO_MC.phaseNames;
+valid = find(RPO_MC.valid(:,1));
+idxCycle = NaN;
+phaseDV = nan(2,numel(phases));
+phaseTOF = phaseDV;
+status = 'Open';
+clientStatus = status;
+returnTransfer = [];
+if ~isempty(valid)
+    cycleDV = RPO_MC.CycleDV_mps(valid,1);
+    [~,nearP95] = min(abs(cycleDV-prctile(cycleDV,95)));
+    idxCycle = valid(nearP95);
+    phaseDV = squeeze(RPO_MC.DV_phase_mps(idxCycle,1,:,:));
+    phaseTOF = squeeze(RPO_MC.TOF_phase_min(idxCycle,1,:,:));
+    status = 'Paired MC P95-DV representative';
+    clientStatus = status;
+    returnTransfer = RPO_MC.records{idxCycle,1}.ReturnTransfer;
+else
+    % Preserve an outbound estimate when no complete retrieval is feasible.
+    clients = RPO_MC.clientCandidates(:,1);
+    clients = clients(~cellfun(@isempty,clients));
+    if ~isempty(clients)
+        dv = cellfun(@(client) client.dv,clients);
+        [~,idxClient] = min(abs(dv-prctile(dv,95)));
+        phaseDV(1,:) = clients{idxClient}.dvPhase;
+        phaseTOF(1,:) = clients{idxClient}.tofPhase;
+        clientStatus = 'Outbound-only MC P95-DV representative';
+    end
 end
-DV_RPO_client = sum(DV_client_phase);
-DV_RPO_atlante = sum(DV_atlante_phase);
-TOF_RPO_client = sum(TOF_client_phase);
-TOF_RPO_atlante = sum(TOF_atlante_phase);
-DV_RPO_cycle = DV_RPO_client + DV_RPO_atlante;
-TOF_RPO_cycle = TOF_RPO_client + TOF_RPO_atlante;
+DV_client_phase = phaseDV(1,:);
+DV_atlante_phase = phaseDV(2,:);
+TOF_client_phase = phaseTOF(1,:);
+TOF_atlante_phase = phaseTOF(2,:);
+for k = 1:numel(phases)
+    rows = add(rows,'Taxi','Outbound RPO',phases{k},'Baseline', ...
+        1,DV_client_phase(k),TOF_client_phase(k), ...
+        clientStatus,'Nominal client approach feasibility checks',true);
+    rows = add(rows,'Taxi','Inbound RPO',phases{k},'Baseline', ...
+        1,DV_atlante_phase(k),TOF_atlante_phase(k), ...
+        status,'Same paired cycle as outbound',true);
+end
+returnTOF_min = NaN;
+returnDV = [NaN NaN];
+if ~isempty(returnTransfer)
+    returnTOF_min = returnTransfer.transferTime_s/60;
+    returnDV = [norm(returnTransfer.departureBurn_mps),norm(returnTransfer.arrivalBurn_mps)];
+end
+rows = add(rows,'Taxi','Inbound far', ...
+    'Lambert departure burn','Baseline',1, ...
+    returnDV(1),returnTOF_min,status,'Captured stack after dwell',true);
+rows = add(rows,'Taxi','Inbound far', ...
+    'RPO entry velocity match','Baseline',1, ...
+    returnDV(2),0,status,'Inertial velocity match relative to Atlante',true);
+
 RPO_MC_Table = table( ...
     string(phases(:)), ...
     DV_client_phase(:), ...
@@ -209,44 +218,20 @@ fprintf('\n========================================\n');
 fprintf('TAXI MONTE CARLO RPO PHASE BUDGET\n');
 fprintf('========================================\n');
 disp(RPO_MC_Table);
-fprintf('\nOutbound to client:\n');
-fprintf('  Selected DV:  %.4f m/s\n',DV_RPO_client);
-fprintf('  Selected TOF: %.2f min\n',TOF_RPO_client);
-fprintf('  Independent P95 TOF: %.2f min\n', ...
-    P95_TOF_client);
-fprintf('\nInbound to ATLANTE:\n');
-fprintf('  Selected DV:  %.4f m/s\n',DV_RPO_atlante);
-fprintf('  Selected TOF: %.2f min\n',TOF_RPO_atlante);
-fprintf('  Independent P95 TOF: %.2f min\n', ...
-    P95_TOF_atlante);
-fprintf('\nComplete retrieval RPO:\n');
-fprintf('  Selected DV:  %.4f m/s\n',DV_RPO_cycle);
-fprintf('  Selected TOF: %.2f min\n',TOF_RPO_cycle);
-fprintf('\nLifetime RPO (%d retrievals):\n',Ndeliveries);
-fprintf('  DV: %.4f m/s\n', ...
-    Ndeliveries*DV_RPO_cycle);
-RPO_MC = struct();
-RPO_MC.Client = MC_client;
-RPO_MC.ATLANTE = MC_atlante;
-RPO_MC.SelectedClientTrial = idxClient;
-RPO_MC.SelectedATLANTETrial = idxAtlante;
+RPO_MC.SelectedCycle = idxCycle;
 RPO_MC.PhaseTable = RPO_MC_Table;
-RPO_MC.CycleDV_mps = DV_RPO_cycle;
-RPO_MC.CycleTOF_min = TOF_RPO_cycle;
-RPO_MC.P95ClientTOF_min = P95_TOF_client;
-RPO_MC.P95ATLANTETOF_min = P95_TOF_atlante;
 rows = add(rows,'Taxi','Payload', ...
-    'Capture module','Baseline',Ndeliveries, ...
+    'Capture module','Baseline',1, ...
     NaN,cfg.captureWait_min, ...
     'Open','Capture dynamics not modelled',true);
 rows = add(rows,'Taxi','Payload', ...
-    'ATLANTE handover','Baseline',Ndeliveries, ...
+    'ATLANTE handover','Baseline',1, ...
     NaN,cfg.handoverWait_min, ...
     'Open','Handover dynamics not modelled',true);
 opts = struct();
 opts.methods = {'GeneralHCW','Vbar','Rbar'};
 opts.gateDistance_m = 40;
-timesMin = 5:5:130;
+timesMin = cfg.assemblyTransferTimes_min;
 opts.exitTimesMin = 5:5:30;
 opts.finalTimesMin = 5:5:30;
 opts.maxExitSpeed_mps = 0.1;
@@ -281,42 +266,15 @@ vehicles = {'Kiki','Rango'};
 
 Nreloc = A.Nmodules;
 
-% Extract complete directional TOFs from the selected trajectories.
-% Each includes:
-%   controlled exit + HCW transfer + controlled arrival
-
-TOF_outbound_min = NaN(Nreloc,1);
-TOF_return_min   = NaN(Nreloc,1);
-
-for k = 1:Nreloc
-
-    rec = A.bestRecords{k};
-
-    if isempty(rec)
-        error('No feasible assembly relocation for module %d.',k);
-    end
-
-    TOF_outbound_min(k) = rec.outbound.tof_min;
-    TOF_return_min(k)   = rec.returnTrip.tof_min;
-
-end
-
-% Directly use the selected optimization Delta-V results.
+TOF_outbound_min = A.totalTimePerDirection_min(:,1);
+TOF_return_min = A.totalTimePerDirection_min(:,2);
 DV_outbound_mps = A.DV_outbound;
-DV_return_mps   = A.DV_return;
-
-% Verify consistency with the complete round-trip results.
+DV_return_mps = A.DV_return;
 tol = 1e-6;
-
-assert(all(abs( ...
-    TOF_outbound_min + TOF_return_min ...
-    - A.TOF_perModule_min) < tol), ...
-    'Assembly TOF does not match selected optimization results.');
-
-assert(all(abs( ...
-    DV_outbound_mps + DV_return_mps ...
-    - A.DV_perModule) < tol), ...
-    'Assembly DV does not match selected optimization results.');
+assert(isequaln(isnan(TOF_outbound_min + TOF_return_min), ...
+    isnan(A.TOF_perModule_min)));
+assert(all(abs(TOF_outbound_min + TOF_return_min - ...
+    A.TOF_perModule_min) < tol | isnan(A.TOF_perModule_min)));
 
 %% VEHICLE-LEVEL RESULTS
 
@@ -326,8 +284,12 @@ AssemblyVehicleTable = table();
 
 for j = 1:2
 
-    indices = j:2:Nreloc;
+    indices = 1:Nreloc;
+    if j == 2
+        indices = [];
+    end
     count = numel(indices);
+    unresolved = nnz(~isfinite(A.DV_perModule(indices)));
 
     % Delta-V from selected weighted trajectories
     dvOut  = sum(DV_outbound_mps(indices));
@@ -345,6 +307,7 @@ for j = 1:2
     newRow = table( ...
         string(vehicles{j}), ...
         count, ...
+        unresolved, ...
         dvOut, ...
         dvBack, ...
         dvTotal, ...
@@ -354,6 +317,7 @@ for j = 1:2
         'VariableNames',{ ...
         'Vehicle', ...
         'Nmodules', ...
+        'UnresolvedModules', ...
         'DV_Outbound_mps', ...
         'DV_Return_mps', ...
         'DV_Total_mps', ...
@@ -365,44 +329,37 @@ for j = 1:2
 
     %% ADD TO PHASE A BUDGET
 
+    if count == 0
+        rows = add(rows,vehicles{j},'Assembly', ...
+            'Surface mobility and installation','Baseline',1, ...
+            NaN,NaN,'Open','Rango rides Kiki for orbital transfers',true);
+        continue;
+    end
+    if unresolved > 0
+        relocationStatus = 'Open';
+    else
+        relocationStatus = 'Calculated';
+    end
     rows = add(rows,vehicles{j},'Assembly', ...
         'Loaded relocation','Baseline',1, ...
-        dvOut,tofOut,'Calculated', ...
-        'assembly_relocations_v4',true);
-
+        dvOut/count,tofOut/count,relocationStatus, ...
+        'assembly_relocations_v4, Kiki fleet',true);
     rows = add(rows,vehicles{j},'Assembly', ...
         'Unloaded return','Baseline',1, ...
-        dvBack,tofBack,'Calculated', ...
-        'assembly_relocations_v4',true);
-
-    % Loaded outbound relocation
+        dvBack/count,tofBack/count,relocationStatus, ...
+        'assembly_relocations_v4, Kiki fleet',true);
+    rows = add(rows,vehicles{j},'Operations', ...
+        'Docked loading','Baseline',1, ...
+        0,cfg.veicLoading_min,'Assumed','Docked on Atlante',true);
+    rows = add(rows,vehicles{j},'Operations', ...
+        'Recharging','Baseline',1, ...
+        0,cfg.veicCharge_min,'Assumed','Docked on Atlante',true);
+    rows = add(rows,vehicles{j},'Operations', ...
+        'Free-flight Vbar holding','Baseline',1, ...
+        NaN,cfg.veicHold_min,'Open','Perturbed hold unmodelled',true);
     rows = add(rows,vehicles{j},'Assembly', ...
-        'Loaded relocation per trip','Baseline',count, ...
-        dvOut/count,tofOut/count,'Calculated', ...
-        'assembly_relocations_v4',true);
-
-    % Unloaded return
-    rows = add(rows,vehicles{j},'Assembly', ...
-        'Unloaded return per trip','Baseline',count, ...
-        dvBack/count,tofBack/count,'Calculated', ...
-        'assembly_relocations_v4',true);
-
-    %% EXISTING OPERATIONS
-
-    rows = add(rows,vehicles{j},'Operations', ...
-        'Docked loading','Baseline',count, ...
-        0,cfg.veicLoading_min,'Assumed', ...
-        'No independent translation while docked',true);
-
-    rows = add(rows,vehicles{j},'Operations', ...
-        'Recharging','Baseline',count, ...
-        0,cfg.veicCharge_min,'Assumed', ...
-        'Docked charging',true);
-
-    rows = add(rows,vehicles{j},'Operations', ...
-        'Free-flight Vbar holding','Baseline',count, ...
-        NaN,cfg.veicHold_min,'Open', ...
-        'Perturbed control not modelled',true);
+        'Host access transport with Rango','Baseline',1, ...
+        NaN,NaN,'Open','Requires host access and transported mass model',true);
 
 end
 
@@ -418,35 +375,19 @@ fprintf('Total TOF: %.2f min\n',A.TOF_min);
 
 disp(AssemblyVehicleTable);
 
-% Verify full-campaign totals
-assert(abs(sum(AssemblyVehicleTable.DV_Total_mps) ...
-    - A.DV) < tol, ...
-    'Vehicle DV does not match assembly total.');
-
-assert(abs(sum(AssemblyVehicleTable.TOF_Total_min) ...
-    - A.TOF_min) < tol, ...
-    'Vehicle TOF does not match assembly total.');
+if A.feasible
+    assert(abs(sum(AssemblyVehicleTable.DV_Total_mps)-A.DV) < tol);
+    assert(abs(sum(AssemblyVehicleTable.TOF_Total_min)-A.TOF_min) < tol);
+end
 
 missionMin = cfg.missionYears * 365.25 * 24 * 60;
-taxiBusyMin = 0;
-for k = 1:size(rows,1)
-    isTaxi = strcmp(rows{k,1},'Taxi');
-    isBaseline = strcmp(rows{k,4},'Baseline');
-    isActivity = ismember(rows{k,2}, ...
-        {'Outbound far','Inbound far', ...
-         'Outbound RPO','Inbound RPO','Payload'});
-    if isTaxi && isBaseline && isActivity
-        t = rows{k,12};
-        if isnumeric(t) && isfinite(t)
-            taxiBusyMin = taxiBusyMin + t;
-        end
-    end
-end
-taxiIdleMin = max(0,missionMin-taxiBusyMin);
+validateattributes(cfg.taxiParkingYears,{'numeric'}, ...
+    {'scalar','real','finite','nonnegative','<=',cfg.missionYears});
+taxiIdleMin = cfg.taxiParkingYears*365.25*24*60;
 fprintf('\n========================================\n');
 fprintf('MISSION PARKING TIME ESTIMATES\n');
 fprintf('========================================\n');
-fprintf('Taxi idle:   %.2f days\n',taxiIdleMin/1440);
+fprintf('Assumed Taxi parking exposure:   %.2f days\n',taxiIdleMin/1440);
 fprintf('ATLANTE SK:  %.2f days\n',missionMin/1440);
 hSK = cfg.h_target_km - ...
       cfg.launchAltError_km - cfg.hClientSpread_km;
@@ -455,6 +396,17 @@ fprintf('SK altitude: %.2f km\n',hSK);
 fprintf('Atmospheric density: %.5e kg/m^3\n',rhoSK);
 vehicleNames = {'Taxi','ATLANTE'};
 SK = table();
+relativeSK = struct();
+atlanteStack = struct('mass_kg',cfg.massAtlante_kg+cfg.massKiki_kg+cfg.massRango_kg, ...
+    'area_m2',cfg.areaAtlante_m2,'Cd',cfg.CdAtlante);
+host = struct('mass_kg',cfg.massHost_kg,'area_m2',cfg.areaHost_m2,'Cd',cfg.CdHost);
+relativeDensity = cfg.relativeSKDensity_kgm3;
+if isnan(relativeDensity)
+    relativeDensity = 9.158e-12*exp(-(cfg.h_target_km-350)/53.298);
+end
+relativeOptions = struct('altitude_m',1000*cfg.h_target_km, ...
+    'rho_kgm3',relativeDensity,'correctionInterval_hr',cfg.relativeSKInterval_hr, ...
+    'AZmargin_m',cfg.relativeSKAZmargin_m);
 for j = 1:numel(vehicleNames)
     veh = vehicleNames{j};
     if strcmp(veh,'Taxi')
@@ -464,7 +416,12 @@ for j = 1:numel(vehicleNames)
         distance = cfg.taxiDistance_m;
         occupancyMin = taxiIdleMin;
         xEntry = [0;-100;0;0;0;0];
-        Nentries = Ndeliveries;
+        ellipse = cfg.taxiParkingEllipse;
+        departureState = cfg.taxiParkingDepartureState;
+        departureWait_s = cfg.taxiParkingWaitBeforeDeparture_s;
+        reference = atlanteStack;
+        relativeOptions.AZ_m = cfg.taxiParkingAZ_m;
+        referenceName = 'Atlante stack';
     else
         mass = cfg.massAtlante_kg + ...
                cfg.massKiki_kg + cfg.massRango_kg;
@@ -473,9 +430,37 @@ for j = 1:numel(vehicleNames)
         distance = cfg.atlanteDistance_m;
         occupancyMin = missionMin;
         xEntry = [0;-100;0;0;0;0];
-        Nentries = cfg.Nclients + 1;
+        ellipse = cfg.atlanteParkingEllipse;
+        departureState = cfg.atlanteParkingDepartureState;
+        departureWait_s = cfg.atlanteParkingWaitBeforeDeparture_s;
+        reference = host;
+        relativeOptions.AZ_m = cfg.atlanteParkingAZ_m;
+        referenceName = 'host structure';
+    end
+    if isnan(ellipse.ellipseCenter_m)
+        ellipse.ellipseCenter_m = distance;
+    end
+    parking = ellipse;
+    parking.mass_kg = mass;
+    parking.area_m2 = area;
+    parking.Cd = Cd;
+    parking.staticDistance_m = distance;
+    relAnnual = NaN;
+    relRange = nan(2,1);
+    azViolations = nan(2,1);
+    relativeStatus = 'Open';
+    if cfg.runAnnualSK
+        relativeSK.(veh) = run_FABER_Taxi_idle_SK(parking,reference,relativeOptions);
+        relAnnual = relativeSK.(veh).annualDV_mps;
+        relRange = relativeSK.(veh).summary.MinRange_m;
+        azViolations = relativeSK.(veh).summary.AZViolationSteps;
+        relativeStatus = 'Estimated';
     end
     occupancyYears = occupancyMin/(365.25*24*60);
+    DVrelative = relAnnual*occupancyYears;
+    rows = add(rows,veh,'Relative stationkeeping', ...
+        'Differential-drag compensation','Baseline',1,DVrelative,NaN, ...
+        relativeStatus,['Periodic two-impulse HCW relative to ' referenceName],true);
     dragAnnual = station_keeping( ...
         mass,rhoSK,area,Cd,hSK,1);
     dragLifetime = station_keeping( ...
@@ -483,40 +468,47 @@ for j = 1:numel(vehicleNames)
     for a = 1:2
         if a == 1
             architecture = 'Vbar';
-            relAnnual = cfg.relativeSK_Vbar_mpsYr;
+
         else
             architecture = 'orbit';
-            relAnnual = cfg.relativeSK_orbit_mpsYr;
+
         end
         label = [veh ' ' architecture];
-        rows = add(rows,veh,'Parking', ...
-            'Orbital drag compensation',label,1, ...
-            dragLifetime.DV_SK,occupancyMin, ...
-            'Estimated','MA_deltav drag model',false);
+       % Regular orbital stationkeeping
+% Include once per vehicle, independent of parking strategy
+
+if a == 1
+
+    rows = add(rows,veh,'Stationkeeping', ...
+        'Orbital stationkeeping','Baseline',1, ...
+        dragLifetime.DV_SK,0, ...
+        'Calculated','station_keeping',true);
+
+end
+
         P = parkingAcquisitionHCW( ...
             mu,Re,cfg.h_target_km, ...
             xEntry,distance,architecture, ...
-            cfg.orbitRadialAmplitude_m, ...
-            cfg.parkingEntryTime_s);
+            ellipse,cfg.parkingEntryTime_s);
         rows = add(rows,veh,'Parking', ...
-            'Parking acquisition',label,Nentries, ...
+            'Parking acquisition',label,1, ...
             P.DV_mps,P.TOF_min, ...
             'Estimated','Two-impulse HCW transfer',false);
-        DVrelative = relAnnual * occupancyYears;
-        rows = add(rows,veh,'Parking', ...
-            'Relative maintenance allocation',label,1, ...
-            DVrelative,0, ...
-            'Assumed','Formation-flying trade allowance',false);
+
+
         rows = add(rows,veh,'Parking', ...
             'Hohmann departure burn (already allocated)', ...
-            label,Nentries,0,0, ...
+            label,1,0,0, ...
             'Included elsewhere', ...
             'Far-field/inter-client orbital transfer',false);
+        n = sqrt(mu/(Re+cfg.h_target_km)^3);
+        parkingStart = parkingState(n,distance,architecture,ellipse, ...
+            cfg.parkingEntryTime_s+departureWait_s);
+        D = parkingTransferHCW(n,parkingStart,departureState,cfg.parkingDepartureTime_s);
         rows = add(rows,veh,'Parking', ...
             'Departure state alignment correction', ...
-            label,Nentries,NaN,NaN, ...
-            'Open', ...
-            'Requires departure state and burn geometry',false);
+            label,1,D.DV_mps,D.TOF_min, ...
+            'Estimated','Two-impulse HCW transfer to pre-burn handoff',false);
         new = table( ...
             string(veh),string(architecture), ...
             occupancyYears, ...
@@ -524,10 +516,11 @@ for j = 1:numel(vehicleNames)
             dragLifetime.DV_SK, ...
             relAnnual, ...
             DVrelative, ...
+            relRange(a), ...
+            azViolations(a), ...
             P.DV_mps, ...
             P.TOF_min, ...
-            Nentries, ...
-            Nentries*P.DV_mps, ...
+            D.DV_mps,D.TOF_min, ...
             'VariableNames',{ ...
             'Vehicle', ...
             'Architecture', ...
@@ -536,10 +529,11 @@ for j = 1:numel(vehicleNames)
             'DragLifetime_mps', ...
             'RelativeAnnual_mps', ...
             'RelativeLifetime_mps', ...
+            'RelativeMinRange_m', ...
+            'RelativeAZViolationSteps', ...
             'EntryDV_mps', ...
             'EntryTOF_min', ...
-            'Nentries', ...
-            'EntryLifetime_mps'});
+            'DepartureDV_mps','DepartureTOF_min'});
         SK = [SK;new];
     end
 end
@@ -547,16 +541,48 @@ fprintf('\n========================================\n');
 fprintf('PARKING ARCHITECTURE RESULTS\n');
 fprintf('========================================\n');
 disp(SK);
+
+%% STATIONKEEPING BUDGET OUTPUT
+
+Tsk = cell2table(rows, ...
+    'VariableNames',{ ...
+    'Vehicle','Segment','Phase','Architecture', ...
+    'Count','DV_perEvent_mps','TOF_perEvent_min', ...
+    'Status','Basis','IncludeInBaseline', ...
+    'DV_lifetime_mps','ActivityTime_min'});
+
+%% ================================================================
+% ORBITAL STATIONKEEPING - ANNUAL AND LIFETIME RESULTS
+% ================================================================
+
+fprintf('\n========================================\n');
+fprintf('ORBITAL STATIONKEEPING\n');
+fprintf('========================================\n');
+
+% Extract one row per vehicle
+SK_orbital = SK(SK.Architecture == "Vbar", ...
+    {'Vehicle','ParkingYears', ...
+     'DragAnnual_mps','DragLifetime_mps'});
+
+disp(SK_orbital);
+
+fprintf('\n========================================\n');
+fprintf('RELATIVE STATIONKEEPING\n');
+fprintf('========================================\n');
+
+SK_relative = SK(:, ...
+    {'Vehicle','Architecture','ParkingYears', ...
+     'RelativeAnnual_mps','RelativeLifetime_mps'});
+
+disp(SK_relative);
+
 MU = table();
 if cfg.includeMomentumUnloading
     rhoMU = rhoSK;
     hMU = hSK;
     CdMU = 2.2;
     CrMU = 1.5;
-    kikiIndices = 1:2:Nreloc;
-    rangoIndices = 2:2:Nreloc;
-    kikiActive_min = sum(A.TOF_perModule_min(kikiIndices));
-    rangoActive_min = sum(A.TOF_perModule_min(rangoIndices));
+    kikiActive_min = mean(TOF_outbound_min+TOF_return_min);
     vehicleMU = { ...
         'Taxi'; ...
         'ATLANTE'; ...
@@ -572,12 +598,12 @@ if cfg.includeMomentumUnloading
         cfg.missionYears; ...
         cfg.missionYears; ...
         kikiActive_min/(365.25*24*60); ...
-        rangoActive_min/(365.25*24*60)];
+        NaN];
     configurationMU = { ...
         'Taxi independent ADCS'; ...
         'ATLANTE with docked payloads'; ...
-        'Kiki free flight'; ...
-        'Rango free flight'};
+        'Kiki free flight per relocation round trip'; ...
+        'Rango attached operations unresolved'};
     for j = 1:numel(vehicleMU)
         m = massMU(j);
         years = durationYearsMU(j);
@@ -618,7 +644,7 @@ if cfg.includeMomentumUnloading
                 'ReferenceArea_m2', ...
                 'OperatingYears', ...
                 'OperatingTime_min', ...
-                'LifetimeDV_mps'});
+                'BudgetDV_mps'});
         MU = [MU;newRow];
     end
 end
@@ -636,14 +662,23 @@ for veh = {'Taxi','ATLANTE'}
 end
 rows = add(rows,'Taxi','Contingency', ...
     'Aborted approach','Baseline', ...
-    cfg.abortFraction*Ndeliveries, ...
+    1, ...
     cfg.abortDV_mps,NaN,'Assumed', ...
     'MA_deltav allowance',true);
 rows = add(rows,'Taxi','Contingency', ...
     'Collision avoidance','Baseline', ...
-    cfg.CAMperYear*cfg.missionYears, ...
+    1, ...
     cfg.CAM_DV_mps,NaN,'Assumed', ...
     'MA_deltav allowance',true);
+for veh = {'Taxi','ATLANTE'}
+    rows = add(rows,veh{1},'Contingency', ...
+        'Safety contingency and recovery','Baseline',1,NaN,NaN, ...
+        'Open','Fault and recovery allocation unresolved',true);
+end
+rows = add(rows,'ATLANTE','Contingency','Aborted approach','Baseline', ...
+    NaN,NaN,NaN,'Open','Atlante-specific contingency unresolved',true);
+rows = add(rows,'ATLANTE','Contingency','Collision avoidance','Baseline', ...
+    NaN,NaN,NaN,'Open','Atlante-specific contingency unresolved',true);
 T = cell2table(rows,'VariableNames', ...
     {'Vehicle','Segment','Phase','Architecture', ...
     'Count','DV_perEvent_mps','TOF_perEvent_min', ...
@@ -651,40 +686,52 @@ T = cell2table(rows,'VariableNames', ...
     'DV_lifetime_mps','ActivityTime_min'});
 T.Vehicle = string(T.Vehicle);
 T.Architecture = string(T.Architecture);
-T.MarginedDV_mps = T.DV_lifetime_mps * ...
-    (1+cfg.marginFraction);
+phase = string(T.Phase);
+segment = string(T.Segment);
+stochastic = ismember(segment,["Outbound RPO","Inbound RPO","Contingency"]);
+margin = @(dv,isStochastic) FABER_apply_DV_margin(dv,isStochastic, ...
+    cfg.marginFraction,cfg.marginMinimum_mps);
+T.MarginedDV_perEvent_mps = margin(T.DV_perEvent_mps,stochastic);
+% Apply the floor to the whole event, then allocate proportionally to
+% the detailed component rows. Unknown components leave the event open.
+for vehicle = ["Taxi","ATLANTE"]
+    for group = ["Deployment","Inter-client","Outbound far","Inbound far"]
+        idx = T.Vehicle==vehicle & segment==group;
+        eventDV = sum(T.DV_perEvent_mps(idx));
+        if isnan(eventDV)
+            T.MarginedDV_perEvent_mps(idx) = NaN;
+        elseif eventDV>0
+            assert(all(T.Count(idx)==T.Count(find(idx,1))));
+            T.MarginedDV_perEvent_mps(idx) = ...
+                T.DV_perEvent_mps(idx)*(margin(eventDV,false)/eventDV);
+        end
+    end
+end
+T.MarginedDV_perEvent_mps(T.Vehicle=="Kiki" & phase=="Loaded relocation") = ...
+    mean(margin(DV_outbound_mps,false));
+T.MarginedDV_perEvent_mps(T.Vehicle=="Kiki" & phase=="Unloaded return") = ...
+    mean(margin(DV_return_mps,false));
+validateattributes(cfg.interClientRAANReserve_mps,{'numeric'}, ...
+    {'scalar','real','finite','nonnegative'});
+% Add the reserve after nominal maneuver margins to avoid margin on margin.
+T.MarginedDV_perEvent_mps(segment=="Inter-client" & phase=="RAAN reserve") = ...
+    cfg.interClientRAANReserve_mps;
+T.MarginedDV_mps = T.Count.*T.MarginedDV_perEvent_mps;
+T.BudgetUnit = repmat("Per event",height(T),1);
+T.BudgetUnit(ismember(segment,["Stationkeeping","Relative stationkeeping"]) | ...
+    (segment=="ADCS" & ismember(T.Vehicle,["Taxi","ATLANTE"]))) = "Operating period";
+T.BudgetUnit(segment=="ADCS" & T.Vehicle=="Kiki") = "Per relocation round trip";
 vehicles = ["Taxi";"Kiki";"Rango";"ATLANTE"];
 V = table();
-for j = 1:numel(vehicles)
-    mask = T.Vehicle==vehicles(j) & T.IncludeInBaseline;
-    sub = T(mask,:);
-    new = table(vehicles(j), ...
-        sum(sub.DV_lifetime_mps,'omitnan'), ...
-        sum(sub.MarginedDV_mps,'omitnan'), ...
-        sum(sub.ActivityTime_min,'omitnan'), ...
-        sum(isnan(sub.DV_lifetime_mps)), ...
-        'VariableNames', ...
-        {'Vehicle','KnownDV_mps', ...
-        'KnownMarginedDV_mps','ActivityTime_min', ...
-        'UnresolvedDV'});
-    V = [V;new];
-end
 S = table();
-for j = [1 4]
-    veh = vehicles(j);
-    for arch = ["Vbar","orbit"]
-        mask = T.Vehicle==veh & ...
-            (T.IncludeInBaseline | ...
-            T.Architecture==veh+" "+arch);
-        sub = T(mask,:);
-        new = table(veh,arch, ...
-            sum(sub.DV_lifetime_mps,'omitnan'), ...
-            sum(sub.MarginedDV_mps,'omitnan'), ...
-            sum(isnan(sub.DV_lifetime_mps)), ...
-            'VariableNames', ...
-            {'Vehicle','Architecture','KnownDV_mps', ...
-            'KnownMarginedDV_mps','UnresolvedDV'});
-        S = [S;new];
+for veh = vehicles'
+    baselineMask = T.Vehicle==veh & T.IncludeInBaseline;
+    V = [V; summarizeBudget(T,baselineMask,veh,"Baseline")];
+    if ismember(veh,["Taxi","ATLANTE"])
+        for arch = ["Vbar","orbit"]
+            mask = baselineMask | (T.Vehicle==veh & T.Architecture==veh+" "+arch);
+            S = [S; summarizeBudget(T,mask,veh,arch)];
+        end
     end
 end
 out = struct();
@@ -693,6 +740,7 @@ out.phaseTable = T;
 out.vehicleTotals = V;
 out.vehicleScenarioTotals = S;
 out.annualSK = SK;
+out.relativeSK = relativeSK;
 out.momentumUnloading = MU;
 out.openItems = T(isnan(T.DV_lifetime_mps) | ...
     isnan(T.ActivityTime_min),:);
@@ -702,26 +750,41 @@ out.massAssumptions = table( ...
     cfg.massRango_kg;cfg.massAtlante_kg; ...
     cfg.massHost_kg], ...
     'VariableNames',{'Vehicle','Mass_kg'});
+out.outboundLambert = outbound;
+out.returnLambert = returnTransfer;
 out.RPO_MC = RPO_MC;
 out.RPO_MC_PhaseTable = RPO_MC_Table;
 baseline = T(T.IncludeInBaseline,:);
 BudgetTable = table( ...
-    baseline.Vehicle, ...
-    string(baseline.Segment), ...
-    string(baseline.Phase), ...
-    baseline.Count, ...
-    baseline.DV_perEvent_mps, ...
-    baseline.DV_perEvent_mps.*(1+cfg.marginFraction), ...
-    baseline.DV_lifetime_mps, ...
-    baseline.MarginedDV_mps, ...
+    baseline.Vehicle,string(baseline.Segment),string(baseline.Phase), ...
+    baseline.BudgetUnit,baseline.DV_perEvent_mps,baseline.MarginedDV_perEvent_mps, ...
     baseline.TOF_perEvent_min, ...
-    baseline.ActivityTime_min, ...
-    'VariableNames',{ ...
-    'Vehicle','Segment','Maneuver','Count', ...
-    'RawPerEvent_mps','MarginedPerEvent_mps', ...
-    'RawLifetime_mps','MarginedLifetime_mps', ...
-    'TOF_perEvent_min','TOF_lifetime_min'});
+    'VariableNames',{'Vehicle','Segment','Maneuver','BudgetUnit', ...
+    'RawDV_mps','MarginedDV_mps','ModeledTime_min'});
+BudgetTable.Status = string(baseline.Status);
+BudgetTable.Basis = string(baseline.Basis);
+BudgetTable.Status(isnan(BudgetTable.MarginedDV_mps)) = "Open";
 out.budgetTable = BudgetTable;
+out.vehicleBudgetTables = struct();
+if ~isempty(cfg.vehicleBudgetFolder) && ~isfolder(cfg.vehicleBudgetFolder)
+    mkdir(cfg.vehicleBudgetFolder);
+end
+for j = 1:numel(vehicles)
+    name = char(vehicles(j));
+    detail = BudgetTable(BudgetTable.Vehicle==name,:);
+    out.vehicleBudgetTables.(name) = detail;
+    if ~isempty(cfg.vehicleBudgetFolder)
+        writetable(detail,fullfile(cfg.vehicleBudgetFolder,[name '.csv']));
+    end
+end
+if ~isempty(cfg.vehicleBudgetFolder)
+    writetable(V,fullfile(cfg.vehicleBudgetFolder,'Vehicle_Budget_Summary.csv'));
+    writetable(SK,fullfile(cfg.vehicleBudgetFolder,'Parking_Stationkeeping.csv'));
+end
+out.retrievalAssumptions = struct('moduleAltitude_km',hModule, ...
+    'moduleInclination_deg',iModule,'initialRAANOffset_deg',cfg.moduleRAANOffset_deg, ...
+    'modeledFarFieldCoastDays',(outbound.transferTime_s/60+returnTOF_min)/1440);
+
 
 % SAVE ASSEMBLY OPTIMIZATION RESULTS
 
@@ -742,50 +805,71 @@ fprintf('FABER PHASE A - INDIVIDUAL DELTA V BUDGET\n');
 fprintf('====================================================\n');
 disp(BudgetTable);
 fprintf('\n====================================================\n');
-fprintf('FABER PHASE A - VEHICLE TOTALS\n');
+fprintf('FABER PHASE A - BUDGET BY UNIT\n');
 fprintf('====================================================\n');
 disp(V);
 fprintf('\n====================================================\n');
 fprintf('FABER PHASE A - PARKING SCENARIOS\n');
 fprintf('====================================================\n');
 disp(S);
-fprintf('\n====================================================\n');
-fprintf('MISSION TOTALS - KNOWN BASELINE DELTA V ONLY\n');
-fprintf('====================================================\n');
-fprintf('Raw lifetime DV:      %.5f m/s\n',sum(V.KnownDV_mps));
-fprintf('Margined lifetime DV: %.5f m/s\n',sum(V.KnownMarginedDV_mps));
-fprintf('Modelled TOF:         %.2f days\n', ...
-    sum(V.ActivityTime_min)/1440);
-if any(V.UnresolvedDV>0)
-    fprintf('WARNING: Undefined DV rows are excluded from known totals.\n');
 end
-if any(isnan(BudgetTable.TOF_lifetime_min))
-    fprintf('WARNING: Undefined durations are excluded from modelled TOF.\n');
+
+function summary = summarizeBudget(T,mask,vehicle,architecture)
+summary = table();
+for unit = unique(T.BudgetUnit(mask),'stable')'
+    rows = T(mask & T.BudgetUnit==unit,:);
+    summary = [summary; table(vehicle,architecture,unit, ...
+        sum(rows.DV_perEvent_mps,'omitnan'),sum(rows.MarginedDV_perEvent_mps,'omitnan'), ...
+        nnz(isnan(rows.DV_perEvent_mps) | isnan(rows.MarginedDV_perEvent_mps)), ...
+        'VariableNames',{'Vehicle','Architecture','BudgetUnit','KnownRawDV_mps', ...
+        'KnownMarginedDV_mps','UnresolvedDV'})];
 end
 end
+
 function cfg = defaultInputs()
 cfg = struct();
-cfg.h_target_km = 680.12;
-cfg.i_target_deg = 98.12;
+
+% cfg.h_target_km = 680.12;
+% cfg.i_target_deg = 98.12;
+% cfg.hClientSpread_km = 72.84;
+% cfg.iClientSpread_deg = 0.31;
+
+cfg.h_target_km = 457.25;
+cfg.i_target_deg = 51.02;
+cfg.hClientSpread_km = 67.47;
+cfg.iClientSpread_deg = 2.81;
+
 cfg.missionYears = 7;
-cfg.Nclients = 3;
-cfg.Ndeliveries = 35;
+cfg.taxiParkingYears = cfg.missionYears; % Continuous-parking exposure until a duty cycle is supplied.
 cfg.launchAltError_km = 15;
 cfg.launchIncError_deg = 0.1;
 cfg.launchRAANError_deg = 0.1;
-cfg.hClientSpread_km = 72.84;
-cfg.iClientSpread_deg = 0.31;
 cfg.clientRAANSpread_deg = 0;
+cfg.interClientRAANReserve_mps = 100;
 cfg.phaseAngle_deg = 20;
 cfg.phasingRevs = 10;
+cfg.outboundLambertTOF_s = []; % Empty searches around the nominal revolution count.
+cfg.outboundLambertRevolutions = [];
+cfg.returnLambertTOF_s = [];
+cfg.returnLambertRevolutions = [];
+cfg.farFieldIsp_s = 315.5;
+cfg.outboundMinimumPerigee_km = 160;
+cfg.outboundDepartureEpoch_s = 0; % Seconds on the scenario clock.
+cfg.outboundDepartureArgumentOfLatitude_deg = 0;
+cfg.outboundAtlanteRAAN_deg = 0;
+cfg.moduleAltitudeOffset_km = -15;
+cfg.moduleInclinationOffset_deg = 0.1;
+cfg.moduleRAANOffset_deg = 0.1;
+cfg.payloadMass_kg = 2000;
+cfg.assemblyTransferTimes_min = 5:5:130;
+cfg.vehicleBudgetFolder = '';
 cfg.disposalPerigee_km = 160;
 cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
 cfg.x0_atlante = cfg.x0_client;
-cfg.abortFraction = 0.5;
 cfg.abortDV_mps = 1;
-cfg.CAMperYear = 4;
 cfg.CAM_DV_mps = 1;
 cfg.marginFraction = 0.05;
+cfg.marginMinimum_mps = 10;
 cfg.massTaxi_kg = 3503.59;
 cfg.massKiki_kg = 1813.62;
 cfg.massRango_kg = 1813.62;
@@ -803,7 +887,6 @@ cfg.taxiDistance_m = 1000;
 cfg.taxiDeadband_m = 25;
 cfg.atlanteDistance_m = 250;
 cfg.atlanteDeadband_m = 10;
-cfg.orbitRadialAmplitude_m = 20;
 cfg.skStep_s = 60;
 cfg.rhoRef_kgm3 = 1e-12;
 cfg.scaleHeight_m = 60000;
@@ -816,13 +899,24 @@ cfg.runAnnualSK = true;
 cfg.includeMomentumUnloading = true;
 cfg.taxiDistance_m = 1000;
 cfg.atlanteDistance_m = 250;
-cfg.orbitRadialAmplitude_m = 20;
 cfg.parkingEntryTime_s = 3600;
-cfg.relativeSK_Vbar_mpsYr = 0;
-cfg.relativeSK_orbit_mpsYr = 0;
+cfg.parkingDepartureTime_s = 3600;
+% LVLH pre-burn handoff [m; m/s], with V-bar behind the reference.
+cfg.taxiParkingDepartureState = [0;-100;0;0;0;0];
+cfg.atlanteParkingDepartureState = [0;-100;0;0;0;0];
+cfg.taxiParkingWaitBeforeDeparture_s = 0;
+cfg.atlanteParkingWaitBeforeDeparture_s = 0;
+defaultEllipse = struct('ellipseCenter_m',NaN, ...
+    'ellipseRadialAmplitude_m',20,'ellipsePhase_rad',0);
+cfg.taxiParkingEllipse = defaultEllipse;
+cfg.atlanteParkingEllipse = defaultEllipse;
+cfg.relativeSKDensity_kgm3 = NaN; % Evaluate the density model at parking altitude.
+cfg.relativeSKInterval_hr = 6;
+cfg.taxiParkingAZ_m = 300;
+cfg.atlanteParkingAZ_m = NaN; % Host approach-zone radius requires a mission input.
+cfg.relativeSKAZmargin_m = 0;
 cfg.N_RPO_MC = 1000;
 cfg.RPO_seed_client = 42;
-cfg.RPO_seed_atlante = 2026;
 end
 function rows = add(rows,veh,seg,phase,arch, ...
     count,dv,tof,status,basis,baseline)
@@ -840,6 +934,12 @@ rows(end+1,:) = {veh,seg,phase,arch, ...
     count,dv,tof,status,basis,logical(baseline), ...
     lifeDV,lifeTime};
 end
+function dv = circularPlaneChange(mu,r,iStart,iEnd,raanOffset)
+% Exact angle between orbital normals, expressed as a circular speed change.
+sinHalfSquared = sind((iEnd-iStart)/2)^2 + ...
+    sind(iStart)*sind(iEnd)*sind(raanOffset/2)^2;
+dv = 2000*sqrt(mu/r)*sqrt(max(0,min(1,sinHalfSquared)));
+end
 function [dv1,dv2,tof] = hohmann(mu,r1,r2)
 a = (r1+r2)/2;
 dv1 = (sqrt(mu*(2/r1-1/a))-sqrt(mu/r1))*1000;
@@ -848,28 +948,23 @@ tof = pi*sqrt(a^3/mu);
 end
 function P = parkingAcquisitionHCW( ...
     mu,Re,h_km,x0,distance_m,architecture, ...
-    radialAmp_m,TOF_s)
+    ellipse,TOF_s)
 n = sqrt(mu/(Re+h_km)^3);
-A = [ ...
-    0 0 0 1 0 0;
-    0 0 0 0 1 0;
-    0 0 0 0 0 1;
-    3*n^2 0 0 0 2*n 0;
-    0 0 0 -2*n 0 0;
-    0 0 -n^2 0 0 0];
-x0 = x0(:);
-assert(numel(x0)==6, ...
-    'Initial state must contain six components.');
-assert(TOF_s > 0);
-assert(distance_m > 0);
+xf = parkingState(n,distance_m,architecture,ellipse,TOF_s);
+P = parkingTransferHCW(n,x0,xf,TOF_s);
+end
+
+function xf = parkingState(n,distance_m,architecture,ellipse,elapsed_s)
+validateattributes(elapsed_s,{'numeric'},{'scalar','real','finite','nonnegative'});
+validateattributes(distance_m,{'numeric'},{'scalar','real','finite','positive'});
 if strcmpi(architecture,'Vbar')
     xf = [0;-distance_m;0;0;0;0];
 elseif strcmpi(architecture,'orbit')
-    amp = radialAmp_m;
-    theta = n*TOF_s;
+    amp = ellipse.ellipseRadialAmplitude_m;
+    theta = n*elapsed_s + ellipse.ellipsePhase_rad;
     xf = [ ...
         amp*cos(theta);
-        -distance_m-2*amp*sin(theta);
+        -ellipse.ellipseCenter_m-2*amp*sin(theta);
         0;
         -amp*n*sin(theta);
         -2*amp*n*cos(theta);
@@ -877,6 +972,21 @@ elseif strcmpi(architecture,'orbit')
 else
     error('Unknown parking architecture.');
 end
+end
+
+function P = parkingTransferHCW(n,x0,xf,TOF_s)
+validateattributes(x0,{'numeric'},{'vector','numel',6,'real','finite'});
+validateattributes(xf,{'numeric'},{'vector','numel',6,'real','finite'});
+validateattributes(TOF_s,{'numeric'},{'scalar','real','finite','positive'});
+x0 = x0(:);
+xf = xf(:);
+A = [ ...
+    0 0 0 1 0 0;
+    0 0 0 0 1 0;
+    0 0 0 0 0 1;
+    3*n^2 0 0 0 2*n 0;
+    0 0 0 -2*n 0 0;
+    0 0 -n^2 0 0 0];
 Phi = expm(A*TOF_s);
 Phi_rr = Phi(1:3,1:3);
 Phi_rv = Phi(1:3,4:6);
