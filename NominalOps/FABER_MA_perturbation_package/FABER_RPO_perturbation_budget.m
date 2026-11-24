@@ -29,11 +29,13 @@ opts=setdefault(opts,'raan_deg',0);
 opts=setdefault(opts,'argumentLatitude_deg',0);
 opts=setdefault(opts,'correctionFraction',0.5);
 opts=setdefault(opts,'selection','selected'); % selected/pareto/all
+
 opts=setdefault(opts,'maxCandidates',50);
 opts=setdefault(opts,'holdPositionTolerance_m',0.5);
 opts=setdefault(opts,'holdVelocityTolerance_mps',0.001);
 opts=setdefault(opts,'maxCorrectionBurnFraction',0.05);
 opts=setdefault(opts,'geometryTolerance_m',0.05);
+
 opts=setdefault(opts,'speedTolerance_mps',0.005);
 opts=setdefault(opts,'thrust_N',R.cfg.thrust_N*R.cfg.nActiveThrusters*R.cfg.thrustEfficiency);
 opts=setdefault(opts,'mass_kg',R.cfg.massTaxi_kg);
@@ -60,12 +62,14 @@ switch lower(char(opts.selection))
     otherwise
         error('Selection must be selected, pareto or all.');
 end
+
 [ii,mm]=find(mask);
 if isfinite(opts.maxCandidates) && numel(ii)>opts.maxCandidates
     warning('Limiting perturbation analysis to %d of %d candidates.', ...
         opts.maxCandidates,numel(ii));
     ii=ii(1:opts.maxCandidates); mm=mm(1:opts.maxCandidates);
 end
+
 B=struct(); B.options=opts; B.attempted=false(N,M);
 B.validCorrection=false(N,M); B.CorrectionDV_mps=nan(N,M);
 B.HoldingDV_mps=nan(N,M); B.CorrectionPropellant_kg=nan(N,M);
@@ -87,6 +91,7 @@ for q=1:numel(ii)
                 good=false; reason=sprintf('approach%d_phase%d_%s',leg,idx,fail);
                 break;
             end
+
             dvt=dvt+a.extraDV_mps;
             if k<=4 && S.tofPhase(2*k)>0
                 [h,fail]=holdingCorrection(z.targetState(:),S.tofPhase(2*k)*60,opts,R.cfg.h_km);
@@ -99,8 +104,10 @@ for q=1:numel(ii)
                 end
             end
         end
+
         if ~good, break; end
     end
+
     B.details{i,m}=diag;
     B.validCorrection(i,m)=good; B.failureReason(i,m)=reason;
     B.CorrectionDV_mps(i,m)=dvt;
@@ -113,6 +120,7 @@ for q=1:numel(ii)
     rows(end+1,:)={i,m,good,reason,R.CycleDV_mps(i,m), ...
         R.CycleTOF_min(i,m),dvt,dvh,extraDV,maxHoldDrift}; %#ok<AGROW>
 end
+
 B.table=cell2table(rows,'VariableNames',{'Trial','Architecture','CorrectionFeasible',...
     'Reason','NominalDV_mps','NominalTOF_min','TransferCorrectionDV_mps',...
     'HoldingCorrectionDV_mps','ExtraDV_mps','MaxPredictedHoldDrift_m'});
@@ -139,6 +147,7 @@ try
 catch ME
     fail="integration_"+string(ME.identifier); return;
 end
+
 q=Y(end,:)';
 o.predictedPosError_m=norm(q(1:3));
 o.predictedVelError_mps=norm(q(4:6));
@@ -154,6 +163,7 @@ if z.isImpulsive
 else
     increment=norm(dvc)+norm(dvterm); % additional to nominal continuous control
 end
+
 o.extraDV_mps=max(0,increment); % allocation is nonnegative
 o.midcourseDV_mps=norm(dvc);
 o.terminalDeltaDV_mps=norm(dvterm);
@@ -164,6 +174,7 @@ o.estimatedCorrectionBurnTime_s=tBurn;
 if tBurn/T>opts.maxCorrectionBurnFraction
     fail="correction_burn_fraction";
 end
+
 % Check linearized post-correction terminal position and velocity.
 res=q+P(:,4:6)*dvc+[zeros(3,1);dvterm];
 o.linearizedResidual_m=norm(res(1:3));
@@ -176,6 +187,7 @@ switch k
     case 3, minAllowed=cfg.KOZ_m;
     otherwise, minAllowed=norm(z.endState(1:3));
 end
+
 maxSpeed=inf;
 switch k
     case 1, maxSpeed=cfg.maxSpeed_homing1_mps;
@@ -184,6 +196,7 @@ switch k
     case 4, maxSpeed=cfg.maxSpeed_closing2_mps;
     case 5, maxSpeed=cfg.maxSpeed_final_mps;
 end
+
 minR=inf; maxV=0;
 for j=1:numel(tt)
     Ynom=interp1(tGrid,trace',tt(j),'linear')';
@@ -191,10 +204,12 @@ for j=1:numel(tt)
     if tt(j)>=o.midcourseTime_s
         eState=eState+FABER_MA_dynamics('phi',n,tt(j)-o.midcourseTime_s)*[zeros(3,1);dvc];
     end
+
     actual=Ynom+eState;
     minR=min(minR,norm(actual(1:3)));
     maxV=max(maxV,norm(actual(4:6)));
 end
+
 o.minCorrectedRange_m=minR;
 o.maxCorrectedSpeed_mps=maxV;
 if minR<minAllowed-opts.geometryTolerance_m
@@ -218,6 +233,7 @@ if o.predictedDrift_m<=opts.holdPositionTolerance_m && ...
         o.predictedVelocityDrift_mps<=opts.holdVelocityTolerance_mps
     return;
 end
+
 % Prescribed correction at mid-hold, completing by its scheduled end.
 % This estimates cost, it is NOT a closed-loop deadband controller.
 o.correctionRequired=true;

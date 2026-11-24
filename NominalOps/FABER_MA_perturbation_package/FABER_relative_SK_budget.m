@@ -26,12 +26,14 @@ opts=dflt(opts,'inclination_deg',98.12);
 opts=dflt(opts,'raan_deg',0);
 opts=dflt(opts,'argumentLatitude_deg',0);
 opts=dflt(opts,'duration_days',7);
+
 opts=dflt(opts,'architecture','ellipse'); % 'ellipse' or 'vbar'
 opts=dflt(opts,'centerAlongTrack_m',-1000);
 opts=dflt(opts,'radialAmplitude_m',20);
 opts=dflt(opts,'checkInterval_s',5400);
 opts=dflt(opts,'correctionTOF_s',1800);
 opts=dflt(opts,'positionTolerance_m',10);
+
 opts=dflt(opts,'velocityTolerance_mps',0.01);
 opts=dflt(opts,'minClearance_m',300);
 opts=dflt(opts,'thrust_N',25);
@@ -67,6 +69,7 @@ while t<tf-1e-6
         logRange(end+1,1)=r; %#ok<AGROW>
         logError(end+1,1)=norm(err(1:3)); %#ok<AGROW>
     end
+
     t=t+dt; Y=ZZ(end,:)';
     X=FABER_MA_dynamics('relative',Y(1:6),Y(7:12));
     targetNow=reference(t,n,opts);
@@ -80,11 +83,13 @@ while t<tf-1e-6
             norm(errNow(4:6)),NaN,NaN,NaN,NaN,NaN,NaN,"no_time"}; %#ok<AGROW>
         continue;
     end
+
     Tc=opts.correctionTOF_s;
     P=FABER_MA_dynamics('phi',n,Tc);
     if rcond(P(1:3,4:6))<1e-10
         error('Correction TOF singular or ill-conditioned; change correctionTOF_s');
     end
+
     desired=reference(t+Tc,n,opts);
     vPost=P(1:3,4:6)\(desired(1:3)-P(1:3,1:3)*X(1:3));
     dv1=vPost-X(4:6);
@@ -100,6 +105,7 @@ while t<tf-1e-6
         logRange(end+1,1)=r; %#ok<AGROW>
         logError(end+1,1)=norm(Xi(1:3)-tar(1:3)); %#ok<AGROW>
     end
+
     t=t+Tc; Y=ZZ(end,:)';
     Xend=FABER_MA_dynamics('relative',Y(1:6),Y(7:12));
     desire=reference(t,n,opts);
@@ -122,6 +128,7 @@ while t<tf-1e-6
     eventRows(end+1,:)={t/86400,norm(errNow(1:3)), ...
         norm(errNow(4:6)),norm(dv1),norm(dv2),dv,dm,bt,posResidual,status}; %#ok<AGROW>
 end
+
 S=struct();S.options=opts;
 S.corrections=cell2table(eventRows,'VariableNames',{'Epoch_days','PreCorrectionPosError_m',...
     'PreCorrectionVelError_mps','Burn1_mps','Burn2_mps','DV_mps',...
@@ -131,6 +138,7 @@ S.TotalDV_mps=dvtot;S.Propellant_kg=propTot;
 S.BurnTime_s=burnTime;S.DVperYear_mps=dvtot/opts.duration_days*365.25;
 S.MaxPositionError_m=maxErr;S.MaxVelocityError_mps=maxVelErr;
 S.MinSeparation_m=minClear;S.MaxSeparation_m=maxRange;
+
 S.clearanceFeasible=minClear>=opts.minClearance_m;
 S.correctionFeasible=all(string(S.corrections.Status)=="ok") && S.clearanceFeasible && missed==0;
 S.time_s=logTime;S.separation_m=logRange;S.positionError_m=logError;

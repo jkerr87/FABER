@@ -1,4 +1,3 @@
-
 %% LARGE STRUCTURAL PLATFORM CONFIGURATION
 
 structureName = 'Large Structural Platform';

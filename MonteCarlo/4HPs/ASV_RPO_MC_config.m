@@ -1,4 +1,3 @@
-
 function cfg = ASV_RPO_MC_config()
 % FABER TAXI - NINE-PHASE RPO MONTE CARLO
 %
@@ -70,7 +69,6 @@ cfg.hp4_m = [20 20];
 
 cfg.final_m = [5 5];
 
-
 %% HP4 GATE COMPARISON - NEW
 
 % FullStop:
@@ -102,7 +100,6 @@ cfg.eventRangeRateTol_mps = 1e-8;
 
 % AZ and KOZ are preliminary spherical boundaries.
 % No lateral corridor restriction is imposed.
-
 
 %% 6. SAFETY ZONES
 

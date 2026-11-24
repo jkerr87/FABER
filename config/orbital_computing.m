@@ -1,4 +1,3 @@
-
 %% ORBITAL COMPUTING INFRASTRUCTURE CONFIGURATION
 
 structureName = 'Orbital Computing Infrastructure';

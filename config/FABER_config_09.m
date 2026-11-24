@@ -74,6 +74,7 @@ containerModuleIndices = cell(N_deliveryUnits,1);
 for k=1:N_largeModules
     containerModuleIndices{k} = k;
 end
+
 for k=1:N_smallContainers
     first = floor((k-1)*N_smallElements/N_smallContainers)+1;
     last  = floor(k*N_smallElements/N_smallContainers);
@@ -82,6 +83,7 @@ for k=1:N_smallContainers
     elementsPerDelivery(c) = numel(idx);
     containerModuleIndices{c} = N_largeModules+idx;
 end
+
 elementsPerContainer = elementsPerDelivery; % compatibility alias
 
 %% Integrity checks

@@ -7,10 +7,12 @@ validateattributes(rev,{'numeric'},{'scalar','integer','nonnegative','finite'});
 if isempty(times)
     times = period*(rev+(0.15:0.05:0.85));
 end
+
 validateattributes(times,{'numeric'},{'vector','positive','finite','real'});
 validateattributes(epoch_s,{'numeric'},{'scalar','finite','real'});
 validateattributes(minPerigee_km,{'numeric'},{'scalar','finite','real','nonnegative'});
 
+% Rank candidates by both burns after screening their perigee altitude.
 bestDV = Inf;
 candidates = nan(numel(times)*(1+double(rev>0)),6);
 candidate = 0;
@@ -22,6 +24,7 @@ for dt = times(:)'
         if err~=0 || ~all(isfinite([pAxis p e vi(:)' vf(:)']))
             continue
         end
+
         perigee = p/(1+e)-Re;
         departureBurn = vi(:)-taxi(4:6);
         arrivalBurn = gate(4:6)-vf(:);
@@ -32,6 +35,7 @@ for dt = times(:)'
         if perigee<minPerigee_km
             continue
         end
+
         if dv<bestDV
             bestDV = dv;
             transfer = struct('transferTime_s',dt,'departureEpoch_s',epoch_s, ...
@@ -43,6 +47,7 @@ for dt = times(:)'
         end
     end
 end
+
 if ~isfinite(bestDV)
     transfer = [];
     return;
@@ -59,6 +64,8 @@ if norm(arrival(1:3)-transfer.gateTargetECI(1:3)) >= 1 || ...
     transfer = [];
     return;
 end
+
+% Retain the candidate grid for the transfer-time trade plot.
 transfer.search = array2table(candidates(1:candidate,:), ...
     'VariableNames',{'Duration_s','Branch','PerigeeAltitude_km', ...
     'DepartureDV_mps','ArrivalDV_mps','TotalDV_mps'});

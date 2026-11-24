@@ -12,6 +12,7 @@ nexttile;
 if any(valid)
     scatter(R.CycleTOF_min(valid,architecture),dv(valid),18,'filled');
 end
+
 xlabel('Close-field cycle time [min]');
 ylabel('Close-field cycle delta-V [m/s]');
 title(sprintf('Feasible campaign P95 known subtotal: %.3g m/s',B.P95KnownRawDV_mps));
@@ -20,6 +21,7 @@ if ~any(valid)
     return;
 end
 
+% Select an existing trial so its outbound and return traces stay paired.
 accepted = find(valid);
 [~,nearest] = min(abs(dv(valid)-prctile(dv(valid),95)));
 trial = R.records{accepted(nearest),architecture};
@@ -40,11 +42,13 @@ for leg = 1:2
         X = approaches{leg}.trace{phase};
         plot(ax,X(1,:),X(2,:),'DisplayName',R.phaseNames{phase});
     end
+
     for k = 1:4
         X = approaches{leg}.trace{2*k};
         plot(ax,X(1,1),X(2,1),'ko','HandleVisibility','off');
         text(ax,X(1,1),X(2,1),sprintf(' HP%d',k));
     end
+
     plot(ax,0,0,'kp','DisplayName','Target');
     axis(ax,'equal');
     grid(ax,'on');
@@ -53,6 +57,7 @@ for leg = 1:2
     title(ax,names{leg});
     legend(ax,'Location','best');
 end
+
 figure('Name','Representative RPO cycle','Color','w');
 tiledlayout(3,2);
 for leg = 1:2
@@ -76,6 +81,7 @@ for leg = 1:2
         plot(rangeAx,t,range,'Color',colors(phase,:));
         plot(speedAx,t,closing,'Color',colors(phase,:));
     end
+
     view(ax,3);
     axis(ax,'equal');
     grid(ax,'on');

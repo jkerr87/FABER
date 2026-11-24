@@ -1,3 +1,4 @@
+% Run the three-holding-point V-bar study and check its P95 trajectory.
 clear; clc; close all;
 
 cfg = ASV_RPO_MC_config();

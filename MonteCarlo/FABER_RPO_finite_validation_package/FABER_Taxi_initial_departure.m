@@ -1,4 +1,3 @@
-
 function D = FABER_Taxi_initial_departure(cfg)
 % FABER_TAXI_INITIAL_DEPARTURE
 %

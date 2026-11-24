@@ -725,6 +725,7 @@ else
        T_H2_actual/60 > cfg.closing_min(2)
         fail = 'time'; return;
     end
+
     dvH2 = sol.dvTotal;
     speedH2 = sol.maxSpeed;
     minH2 = sol.minRange;
@@ -804,7 +805,7 @@ if any(insideKOZ)
 
     % if any(lateral>cfg.corridorHalfWidth_m) || ...
     %    any(alongTrack>=0)
-    % 
+    %
     %     fail = 'corridor';
     %     return;
     % end
@@ -1427,6 +1428,7 @@ originalBounds = cfg.controlled_min;
 if isfield(cfg,'comparisonExpandClosing') && cfg.comparisonExpandClosing
     cfg.controlled_min(2) = max(cfg.controlled_min(2),ceil(periodMin)+1);
 end
+
 fprintf('\nPaired RPO comparison | orbit %.2f km | period %.2f min\n', ...
     cfg.h_km,periodMin);
 fprintf('Closing window: baseline [%.1f, %.1f] min; study [%.1f, %.1f] min\n', ...
@@ -1447,6 +1449,7 @@ if isfield(cfg,'client')
     f=fieldnames(cfg.client);
     for j=1:numel(f), cfgClient.(f{j})=cfg.client.(f{j}); end
 end
+
 if isfield(cfg,'host')
     f=fieldnames(cfg.host);
     for j=1:numel(f), cfgHost.(f{j})=cfg.host.(f{j}); end
@@ -1462,13 +1465,16 @@ for i=1:N
         if ~isempty(why)
             rejection(i,m)="Client: "+string(why);continue;
         end
+
         [h,why]=simulateLeg(cfgHost,xH,n,dH,methods{m});
         if ~isempty(why)
             rejection(i,m)="ATLANTE: "+string(why);continue;
         end
+
         if c.dvTotal+h.dvTotal>cfg.maxDV_perCycle_mps
             rejection(i,m)="Cycle DV cap";continue;
         end
+
         DV(i,m,1)=c.dvTotal;DV(i,m,2)=h.dvTotal;
         TOF(i,m,1)=c.tofTotal;TOF(i,m,2)=h.tofTotal;
         DVphase(i,m,:)=[c.dvPhase h.dvPhase];
@@ -1508,10 +1514,12 @@ for m=1:3
         v=DV(idx,m,1);P95ClientDV_mps(m)=rank95(v);
         v=DV(idx,m,2);P95ATLANTEDV_mps(m)=rank95(v);
     end
+
     if any(common)
         CommonP95CycleDV_mps(m)=rank95(cycleDV(common,m));
     end
 end
+
 summary=table(Method,Accepted,AcceptanceFraction, ...
     P95ClientDV_mps,P95ATLANTEDV_mps,MedianCycleDV_mps, ...
     P95CycleDV_mps,P95CycleTOF_min,WithinOriginalClosingTime, ...
@@ -1524,6 +1532,7 @@ out.baselineClosingWindow_min=originalBounds;
 out.methods=methods;out.summary=summary;
 out.DV_mps=DV;out.TOF_min=TOF;
 out.DV_phase_mps=DVphase;out.TOF_phase_min=TOFphase;
+
 out.CycleDV_mps=cycleDV;out.CycleTOF_min=cycleTOF;
 out.valid=valid;out.commonFeasible=common;
 out.rejectionReason=rejection;out.strictTime=strictTime;
@@ -1544,9 +1553,11 @@ if cfg.saveCSV
             Feasible(t)=valid(i,m);Rejection(t)=rejection(i,m);
         end
     end
+
     writetable(table(Attempt,MethodName,CycleDV,CycleTOF,Feasible,Rejection), ...
         fullfile(cfg.outputFolder,'RPO_three_methods_trials.csv'));
 end
+
 if cfg.makePlots
     plotThreeRPOmethods(out);
 end
@@ -1562,6 +1573,7 @@ for m=1:3
     scatter(out.CycleTOF_min(ok,m),out.CycleDV_mps(ok,m), ...
         24,cols(m,:),'filled','DisplayName',out.methods{m});
 end
+
 xlabel('Complete cycle RPO TOF [min]');
 ylabel('Complete cycle RPO Delta-V [m/s]');
 title('Paired sampled designs (accepted candidates only)');
@@ -1570,6 +1582,7 @@ if out.cfg.saveCSV
     if ~exist(out.cfg.outputFolder,'dir'),mkdir(out.cfg.outputFolder);end
     exportgraphics(f,fullfile(out.cfg.outputFolder,'RPO_three_methods_DV_TOF.png'),'Resolution',200);
 end
+
 for leg=1:2
     fig=figure('Color','w','Name','RPO selected trajectories');
     ax=axes('Parent',fig);hold(ax,'on');grid(ax,'on');axis(ax,'equal');
@@ -1593,6 +1606,7 @@ for leg=1:2
             end
         end
     end
+
     [sx,sy,sz]=sphere(20);A=out.cfg.AZ_m;K=out.cfg.KOZ_m;
     surf(ax,A*sx,A*sy,A*sz,'FaceColor','none', ...
         'EdgeColor',[.2 .5 .9],'EdgeAlpha',.12,'DisplayName','AZ');
@@ -1624,14 +1638,17 @@ sol=[];reason='';
 if exist('analytical_manos','file')~=2
     error('analytical_manos.m not found on MATLAB path.');
 end
+
 try
     a=analytical_manos(x0(1:3),xf(1:3),n,method,3,false);
 catch ME
     error('analytical_manos failed: %s',ME.message);
 end
+
 if ~a.feasible
     reason='terminal';return;
 end
+
 t=linspace(0,a.TOF_s,N);
 Xpost=[x0(1:3);x0(4:6)+a.burn1];
 traj=HCW_trajectory(n,t,Xpost);

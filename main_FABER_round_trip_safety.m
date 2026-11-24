@@ -4,6 +4,7 @@ function out = main_FABER_round_trip_safety(options)
 if nargin<1
     options = struct();
 end
+
 root = fileparts(mfilename('fullpath'));
 addpath(fullfile(root,'ORBMECH'),fullfile(root,'ProximityOps'), ...
     fullfile(root,'MonteCarlo','FABER_safety_v3_nine_phase'),'-begin');
@@ -23,15 +24,20 @@ else
     mu = 398600.4418;
     Re = 6378.1363;
 end
+
+% Solve the reference transfer once and reuse its outbound commands across trials.
 nominal = FABER_outbound_lambert(mu,Re,phase);
 randomState = rng;
 restoreRng = onCleanup(@() rng(randomState)); %#ok<NASGU>
 stream = RandStream('mt19937ar','Seed',cfg.seed);
+
+% Reuse the same random draws when comparing cases with dispersions enabled.
 draw = sampleInputs(stream,cfg);
 zeroDraw = draw(1,:);
 for name = string(draw.Properties.VariableNames)
     zeroDraw.(name) = zeros(size(zeroDraw.(name)));
 end
+
 labels = cfg.cases(:)';
 total = cfg.N*numel(labels);
 rows = cell(total,1);
@@ -50,7 +56,10 @@ for label = labels
         if label=="Nominal" || (label~="Dispersed" && ~cfg.directedUsesDispersions)
             d = zeroDraw;
         end
+
         returnPlan = []; returnArc = []; captureDrift = []; returnReason = "";
+
+        % Apply timing and state errors before propagating the outbound coast.
         depEpoch_s = nominal.departureEpoch_s+d.DepartureTime_s;
         baseTaxi = coast(nominal.departurePreBurnECI,d.DepartureTime_s);
         baseModule = coast(nominal.moduleDepartureECI,d.DepartureTime_s);
@@ -64,6 +73,8 @@ for label = labels
         client = []; host = [];
         status = "Outbound far field";
         reason = arc.reason;
+
+        % Only an acceptable achieved gate state can initialize client RPO.
         if arc.accepted
             handoff = nominal;
             handoff.arrivalLVLH = arc.arrivalLVLH;
@@ -71,10 +82,12 @@ for label = labels
             handoff.arrivalEpoch_s = arc.arrivalEpoch_s;
             handoff.moduleArrivalECI = arc.targetArrivalECI;
             handoff.atlanteDepartureECI = atlante;
+
             handoff.departureBurn_mps = arc.departureBurn_mps;
             handoff.arrivalBurn_mps = arc.arrivalBurn_mps;
             handoff.truthCoast = @coast;
             handoff.planEphemeris = @(x,dt) ephemeris(mu,Re,x,dt,0);
+
             mc = FABER_phaseA_rpo_config(phase,mu,Re,handoff);
             mc.seed = cfg.rpoSeed+i-1;
             mc = override(mc,cfg.rpo);
@@ -96,15 +109,18 @@ for label = labels
                 if label=="Capture failure"
                     status = "Capture";
                 end
+
                 reason = returnReason;
             else
                 status = "Atlante RPO";
                 reason = R.rejectionReason(1,1);
             end
+
             if mc.safetySaveBurns && label=="Dispersed"
                 if ~isempty(client)
                     clientEvents = [clientEvents,client.safetyEvents]; %#ok<AGROW>
                 end
+
                 if ~isempty(host)
                     hostEvents = [hostEvents,host.safetyEvents]; %#ok<AGROW>
                 end
@@ -112,17 +128,20 @@ for label = labels
                 if ~isempty(client)
                     nominalClientEvents = [nominalClientEvents,client.safetyEvents]; %#ok<AGROW>
                 end
+
                 if ~isempty(host)
                     nominalHostEvents = [nominalHostEvents,host.safetyEvents]; %#ok<AGROW>
                 end
             end
         end
+
         records{trial} = struct('outbound',arc,'client',client,'captureDrift',captureDrift, ...
             'returnPlan',returnPlan,'returnArc',returnArc,'host',host);
         rows{trial} = trialRow(trial,label,i,d,status,reason,records{trial});
     end
 end
 
+% Preserve full trial records alongside tabular gate and clearance metrics.
 out = struct();
 out.options = cfg;
 out.phaseA = phase;
@@ -143,9 +162,11 @@ out.figures = gobjects(0);
 if cfg.makePlots
     out.figures = FABER_plot_round_trip_safety(out);
 end
+
 if strlength(cfg.outputFolder)>0
     saveOutputs(out);
 end
+
 disp(out.summary);
 
     function x = coast(x0,dt)
@@ -154,6 +175,7 @@ disp(out.summary);
     end
 
     function [transfer,why] = coupledReturn(clientState,massCaptured)
+    % After client RPO, target the return from the captured stack state.
         transfer = [];
         if label=="Capture failure"
             chief = coast(handoff.moduleArrivalECI,clientState.elapsed_s);
@@ -183,6 +205,7 @@ disp(out.summary);
                 end
             end
         end
+
         why = returnReason;
     end
 
@@ -195,6 +218,7 @@ disp(out.summary);
         elseif errors.arrivalMissed
             arrival = zeros(3,1);
         end
+
         duration = plan.transferTime_s;
         start(4:6) = start(4:6)+departure;
         chaserAt = ephemeris(mu,Re,start,duration,cfg.truthJ2);
@@ -208,6 +232,7 @@ disp(out.summary);
                 result.minAltitude_km < phase.outboundMinimumPerigee_km
             arrival = zeros(3,1);
         end
+
         afterBurn = arrivalPreBurn;
         afterBurn(4:6) = afterBurn(4:6)+arrival;
         relative = FABER_relative_state(target,afterBurn,'eciToLvlh');
@@ -217,6 +242,7 @@ disp(out.summary);
         result.arrivalLVLH = relative;
         result.arrivalECI = afterBurn;
         result.targetArrivalECI = target;
+
         result.departureBurn_mps = departure;
         result.arrivalBurn_mps = arrival;
         result.dv_mps = norm(departure)+norm(arrival);
@@ -232,6 +258,7 @@ disp(out.summary);
                 result.velocityError_mps>cfg.gateVelocityTolerance_mps
             result.reason = "RPO entry outside gate tolerances";
         end
+
         result.accepted = strlength(result.reason)==0;
         result.passiveDrift = [];
         if ~result.accepted && result.minAltitude_km>=phase.outboundMinimumPerigee_km ...
@@ -241,6 +268,7 @@ disp(out.summary);
     end
 
     function result = passiveCoast(chaser,chief)
+    % Measure post-fault drift over the configured observation horizon.
         horizon = cfg.passiveHorizon_s;
         chaserAt = ephemeris(mu,Re,chaser,horizon,cfg.truthJ2);
         chiefAt = ephemeris(mu,Re,chief,horizon,cfg.truthJ2);
@@ -248,6 +276,7 @@ disp(out.summary);
     end
 
     function result = rpoSafety(events,nominalEvents,h_km,geometryField)
+    % Use dispersed events when available and fall back to nominal events.
         result = [];
         source = "Dispersed";
         if isempty(events)
@@ -257,6 +286,7 @@ disp(out.summary);
         if isempty(events)
             return;
         end
+
         settings = cfg.rpoSafety;
         settings.N = cfg.rpoFaultTrials;
         settings.vehicleMass_kg = phase.massTaxi_kg;
@@ -268,12 +298,14 @@ disp(out.summary);
         if ~isfield(settings,'enableActiveCAM')
             settings.enableActiveCAM = hasGroups || hasVehicleGroups;
         end
+
         assert(~settings.enableActiveCAM || hasGroups || hasVehicleGroups, ...
             'Active CAM screening requires verified Taxi firing groups.');
         if ~isfield(settings,'hazards') && isfield(cfg.rpo,geometryField) && ...
                 ~isempty(fieldnames(cfg.rpo.(geometryField)))
             settings.hazards = cfg.rpo.(geometryField);
         end
+
         result = FABER_safety_MC_taxi(events,mu,Re,h_km,settings);
         result.summary.SourceCase = source;
     end
@@ -306,9 +338,11 @@ validateattributes(cfg.sigmaModuleLVLH,{'numeric'},{'vector','numel',6,'finite',
 for field = ["sigmaBurnScale","sigmaBurnVector_mps","sigmaDepartureTime_s","truthJ2","passiveHorizon_s"]
     validateattributes(cfg.(field),{'numeric'},{'scalar','real','finite','nonnegative'});
 end
+
 for field = ["sampleStep_s","gatePositionTolerance_m","gateVelocityTolerance_mps","contactRadius_m"]
     validateattributes(cfg.(field),{'numeric'},{'scalar','real','finite','positive'});
 end
+
 validateattributes(cfg.farProtectedRadius_m,{'numeric'}, ...
     {'scalar','real','finite','>',cfg.contactRadius_m});
 validateattributes(cfg.partialBurnFraction,{'numeric'},{'scalar','real','finite','>',0,'<',1});
@@ -328,6 +362,7 @@ end
 end
 
 function d = sampleInputs(stream,cfg)
+% Draw initial-state errors and separate execution errors for each far-field burn.
 N = cfg.N;
 injection = randn(stream,N,6).*cfg.sigmaInjectionLVLH(:)';
 module = randn(stream,N,6).*cfg.sigmaModuleLVLH(:)';
@@ -359,6 +394,7 @@ if dt==0
     atTime = @(t) repmat(x(:),1,numel(t));
     return;
 end
+
 opts = odeset('RelTol',2e-12,'AbsTol',1e-9);
 sol = ode113(@(~,y) gravity(y,1e9*mu,1000*Re,J2),[0 dt],x(:),opts);
 atTime = @(t) deval(sol,t);
@@ -372,6 +408,7 @@ if J2~=0
     z2r2 = (p(3)/r)^2;
     a = a + (1.5*J2*mu*Re^2/r^5)*p.*([5;5;5]*z2r2-[1;1;3]);
 end
+
 dx = [x(4:6);a];
 end
 
@@ -392,6 +429,7 @@ relative = zeros(6,numel(plotT));
 for k = 1:numel(plotT)
     relative(:,k) = FABER_relative_state(chief(:,k),chaser(:,k),'eciToLvlh');
 end
+
 result = struct('time_s',plotT,'trajectoryLVLH',relative, ...
     'minRadius_m',minRadius,'timeOfClosestApproach_s',tMin,'minAltitude_km',minAltitude);
 end
@@ -401,6 +439,7 @@ distance = norm(x(1:3)-y(1:3));
 end
 
 function [best,when] = refinedMin(t,x,objective)
+% Refine sampled minima to estimate closest approach and minimum altitude.
 [best,index] = min(x);
 when = t(index);
 local = find(x(2:end-1)<=x(1:end-2) & x(2:end-1)<=x(3:end))+1;
@@ -418,6 +457,7 @@ end
 end
 
 function row = trialRow(trial,label,drawId,d,status,reason,result)
+% Keep missing values for downstream stages the trial did not reach.
 outbound = result.outbound;
 client = result.client;
 plan = result.returnPlan;
@@ -431,17 +471,21 @@ driftDistances = [];
 if ~isempty(outbound.passiveDrift)
     driftDistances(end+1) = outbound.passiveDrift.minRadius_m;
 end
+
 if ~isempty(result.captureDrift)
     driftDistances(end+1) = result.captureDrift.minRadius_m;
 end
+
 if ~isempty(client)
     captureEpoch = outbound.arrivalEpoch_s+client.elapsed_s;
     clientDV = client.dv;
 end
+
 if ~isempty(plan)
     returnDeparture = plan.departureEpoch_s;
     captureMass = plan.massCaptured_kg;
 end
+
 if ~isempty(inbound)
     returnArrival = inbound.arrivalEpoch_s;
     returnDV = inbound.dv_mps;
@@ -454,15 +498,18 @@ if ~isempty(inbound)
         driftDistances(end+1) = inbound.passiveDrift.minRadius_m;
     end
 end
+
 if ~isempty(host)
     hostDV = host.dv;
     totalDV = outbound.dv_mps+clientDV+returnDV+hostDV;
     elapsed_hr = (returnArrival+host.elapsed_s-outbound.departureEpoch_s)/3600;
 end
+
 passiveMin = NaN;
 if ~isempty(driftDistances)
     passiveMin = min(driftDistances);
 end
+
 row = table(trial,label,drawId,status,reason,status=="Complete", ...
     outbound.accepted,~isempty(client),~isempty(plan) || ...
     (~isempty(client) && label~="Capture failure"),~isempty(inbound) && inbound.accepted, ...
@@ -483,6 +530,7 @@ row = [row,d];
 end
 
 function S = summarize(T)
+% Summarize case outcomes and compute P95 costs for completed round trips.
 S = table();
 for label = unique(T.Case,'stable')'
     x = T(T.Case==label,:);
@@ -543,6 +591,7 @@ for j=1:numel(metrics)
             cc = corrcoef(ranks(a),ranks(b));
             rho = cc(1,2);
         end
+
         S = [S; table(inputs(i),metrics(j),nnz(keep),rho, ...
             'VariableNames',{'Input','Metric','Trials','SpearmanRho'})]; %#ok<AGROW>
     end
@@ -565,6 +614,7 @@ folder = out.options.outputFolder;
 if ~isfolder(folder)
     mkdir(folder);
 end
+
 writetable(out.trials,fullfile(folder,'Round_Trip_Trials.csv'));
 writetable(out.summary,fullfile(folder,'Round_Trip_Summary.csv'));
 writetable(out.sensitivity,fullfile(folder,'Round_Trip_Sensitivity.csv'));
@@ -572,10 +622,12 @@ if ~isempty(out.rpoSafetyClient)
     writetable(out.rpoSafetyClient.trials,fullfile(folder,'Client_RPO_Faults.csv'));
     writetable(out.rpoSafetyClient.summary,fullfile(folder,'Client_RPO_Fault_Summary.csv'));
 end
+
 if ~isempty(out.rpoSafetyAtlante)
     writetable(out.rpoSafetyAtlante.trials,fullfile(folder,'Atlante_RPO_Faults.csv'));
     writetable(out.rpoSafetyAtlante.summary,fullfile(folder,'Atlante_RPO_Fault_Summary.csv'));
 end
+
 for k=1:numel(out.figures)
     f = out.figures(k);
     exportgraphics(f,fullfile(folder,string(f.Tag)+".png"),'Resolution',160);

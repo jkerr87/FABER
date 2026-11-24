@@ -29,6 +29,7 @@ p.inclination_deg=98.12;
 p.selection='selected';       % 'selected', 'pareto', 'all'
 p.maxCandidates=50;
 p.correctionFraction=0.5;  % prescribed impulse at 50% transfer
+
 p.thrust_N=cfg.thrust_N*cfg.nActiveThrusters*cfg.thrustEfficiency;
 p.mass_kg=cfg.massTaxi_kg;
 p.Isp_s=cfg.Isp_s;        % update from actual thruster selection
@@ -62,6 +63,7 @@ if ~isempty(B.table)
         fprintf('Median additional RPO DV (accepted): %.6f m/s\n',median(B.table.ExtraDV_mps(good)));
     end
 end
+
 fprintf('Taxi parking SK: %.6f m/s in %.1f day(s)\n',SK.TotalDV_mps,s.duration_days);
 fprintf('Taxi parking corrections: %d | minimum separation: %.1f m\n',...
     SK.Ncorrections,SK.MinSeparation_m);

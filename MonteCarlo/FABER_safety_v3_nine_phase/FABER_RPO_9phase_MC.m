@@ -25,9 +25,11 @@ arrivalHost = option(cfg,'arrivalStatesHost',[]);
 if ~isempty(arrivalClient)
     validateattributes(arrivalClient,{'numeric'},{'real','finite','size',[6 cfg.N]});
 end
+
 if ~isempty(arrivalHost)
     validateattributes(arrivalHost,{'numeric'},{'real','finite','size',[6 cfg.N]});
 end
+
 corridor = option(cfg,'terminalCorridorHalfWidth_m',Inf);
 validateattributes(corridor,{'numeric'},{'scalar','real','nonnegative'});
 
@@ -44,6 +46,7 @@ if ~isempty(cfg.thrusterDirections_LVLH)
     assert(exist('linprog','file')==2, ...
         'Directional thruster allocation requires Optimization Toolbox linprog');
 end
+
 validateattributes(cfg.massTaxi_kg,{'numeric'},{'scalar','positive','finite'});
 validateattributes(cfg.Isp_s,{'numeric'},{'scalar','positive','finite'});
 assert(cfg.shellRadius_m(1)>0 && cfg.shellRadius_m(2)>=cfg.shellRadius_m(1));
@@ -51,7 +54,6 @@ assert(ismember(lower(string(cfg.initialPositionMode)), ...
     ["alongtrack","shell","volume"]));
 assert(cfg.maxBurnFraction>0 && cfg.maxBurnFraction<=1);
 assert(cfg.maxPropellantCycle_kg>=0);
-
 
 % mean motion
 n = sqrt(cfg.mu_km3s2 / ...
@@ -125,9 +127,11 @@ for i = 1:N
     if ~isempty(arrivalClient)
         xc = arrivalClient(:,i);
     end
+
     if ~isempty(arrivalHost)
         xh = arrivalHost(:,i);
     end
+
     initialStates(:,i,1) = xc;
     initialStates(:,i,2) = xh;
 
@@ -142,7 +146,6 @@ for i = 1:N
             char(methodC1(m)), ...
             char(methodC2(m))};
 
-
         % Taxi -> Client (unloaded mass, fuel depleted during approach)
         cfgClient=cfg;
         cfgClient.h_km = clientH_km;
@@ -151,12 +154,12 @@ for i = 1:N
         cfgClient.massTaxi_kg=cfg.massTaxi_kg;
         [client,why] = simulateApproach( ...
             cfgClient,xc,dc,nClient,which,char(gateMode(m)));
-        
+
         if ~isempty(why)
             reason(i,m) = "Client: " + string(why);
             continue;
         end
-        
+
         % Taxi -> ATLANTE: after capture, carrying module mass.
         % Other callers can supply a coupled return handoff.
         cfgHost=cfg;
@@ -166,6 +169,7 @@ for i = 1:N
         if cfg.enablePayloadMassChange
             capturedMass=cfg.payloadMass_kg;
         end
+
         cfgHost.massTaxi_kg=cfg.massTaxi_kg-client.propellant_kg+capturedMass;
         returnTransfer = [];
         hostEntry = xh;
@@ -177,41 +181,41 @@ for i = 1:N
                 reason(i,m) = "Return transfer: " + string(why);
                 continue;
             end
+
             hostEntry = returnTransfer.arrivalLVLH;
             cfgHost.massTaxi_kg = returnTransfer.massArrival_kg;
             if norm(hostEntry-xh)>1e-9
                 hostDesign = sampleDesign(cfg,hostEntry);
             end
+
             initialStates(:,i,2) = hostEntry;
         end
+
         [host,why] = simulateApproach( ...
             cfgHost,hostEntry,hostDesign,n,which,char(gateMode(m)));
-        
+
         if ~isempty(why)
             reason(i,m) = "ATLANTE: " + string(why);
             continue;
         end
 
-
-
         % Calculate propellant with phase-specific Isp
         cycleFuel = client.propellant_kg + host.propellant_kg;
-        
+
         % Only enforce propulsion limits when enabled
         if cfg.enablePropulsionConstraints && ...
                 cycleFuel > cfg.maxPropellantCycle_kg
-        
+
             reason(i,m) = "Cycle propellant allocation";
             continue;
         end
-        
+
         if cfg.enablePropulsionConstraints && ...
                 client.dv+host.dv > cfg.maxDV_perCycle_mps
-        
+
             reason(i,m) = "Cycle DV limit";
             continue;
         end
-
 
         FuelCycle_kg(i,m) = cycleFuel;
         BurnTimeCycle_s(i,m) = client.totalBurnTime_s + host.totalBurnTime_s;
@@ -307,7 +311,6 @@ end
 
 %% 5. OUTPUT STRUCTURE
 
-
 R.summary = table( ...
     methodH2,methodC1,methodC2,gateMode, ...
     Accepted,Acceptance, ...
@@ -330,10 +333,10 @@ for i = 1:N
         R.selectedTOF_min(i) = cycleTOF(i,selectedIdx(i));
     end
 end
+
 R.cfg = cfg;
 R.methods = [ ...
     methodH2 methodC1 methodC2 gateMode];
-
 
 R.DV_mps = DV;
 R.TOF_min = TOF;
@@ -391,7 +394,6 @@ if cfg.saveCSV
 
     for m = 1:M
 
-
 rows = table( ...
     (1:N)', ...
     repmat(m,N,1), ...
@@ -411,7 +413,6 @@ rows = table( ...
     'Feasible','CycleDV_mps', ...
     'CycleTOF_min','FuelCycle_kg','BurnTimeCycle_s', ...
     'MaxPhaseBurnFraction','Reason'});
-
 
         T = [T;rows]; %#ok<AGROW>
     end
@@ -487,7 +488,6 @@ speeds = [ ...
     cfg.maxSpeed_closing2_mps, ...
     cfg.maxSpeed_final_mps];
 
-
 for k = 1:5
 
     % Necessary average-speed time bound.
@@ -506,7 +506,6 @@ for k = 1:5
 
     d.T(k) = draw([lo hi]);
 end
-
 
 d.valid = true;
 
@@ -569,7 +568,6 @@ X{4} = [0;-hp(4);0;0;vyGate;0];
 
 % Capture standoff: arrive at zero relative velocity.
 X{5} = [0;-d.final;0;0;0;0];
-
 
 N = max(101,cfg.nTrajectorySamples);
 
@@ -668,51 +666,49 @@ for k = 1:5
         return;
     end
 
-
-
     %% PHASE-SPECIFIC PROPULSION SCREENING
-    
+
     % Five transfers correspond to nine-phase indices:
     % H1=1, H2=3, C1=5, C2=7, Final=9
     phaseNumber = phaseIndices(k);
-    
+
     phaseCfg = FABER_RPO_phase_propulsion( ...
         cfg,phaseNumber);
-    
+
     if cfg.enablePropulsionConstraints
-    
+
         % Thrust magnitude and direction
         % Burn duration and 5% rule
         % Continuous-control thrust feasibility
         [burnOK,burnWhy,burnInfo] = ...
             screenTransferBurns(z,phaseCfg);
-    
+
     else
-    
+
         % Original unconstrained propulsion case
         burnOK = true;
         burnWhy = '';
-    
+
         burnInfo = struct( ...
             'totalBurn_s',NaN, ...
             'fraction',NaN);
-    
+
     end
-    
+
     if ~burnOK
         reason = sprintf('phase%d_%s', ...
             phaseNumber,burnWhy);
         return;
     end
-    
+
     %% BRAKING DISTANCE
-    
+
     if cfg.enablePropulsionConstraints && ...
             cfg.checkBrakingDistance
-    
+
         [brakeOK,brakeReason] = ...
             checkBraking(z,ends{k},phaseCfg);
-    
+
         if ~brakeOK
             reason = sprintf('phase%d_%s', ...
                 phaseNumber,brakeReason);
@@ -720,26 +716,25 @@ for k = 1:5
         end
     end
 
-
     %% EVENT-BASED AZ / KOZ VALIDATION - NEW
-    
+
     [why,events] = verifyZoneEvents( ...
         z,k,cfg,d.final);
-    
+
     zoneEvents{k} = events;
-    
+
     if ~isempty(why)
         reason = sprintf('phase%d_%s', ...
             phaseIndices(k),why);
         return;
     end
 
-
     r = z.trajectory(1:3,:);
     if FABER_path_clearance(r,cfg.pathGeometry) <= 0
         reason = sprintf('phase%d_obstacle_clearance',phaseIndices(k));
         return;
     end
+
     insideKOZ = vecnorm(r,2,1) <= cfg.KOZ_m;
     if isfinite(cfg.terminalCorridorHalfWidth_m) && ...
             any(r(2,insideKOZ)>0 | ...
@@ -805,7 +800,6 @@ s = struct( ...
     'methods',{methods}, ...
     'holdingPoints_m',hp);
 
-
 %% PHASE-SPECIFIC PROPELLANT ESTIMATE
 
 remainingMass = cfg.massTaxi_kg;
@@ -825,11 +819,11 @@ for jj = 1:9
 
 end
 
-
 s.terminalLVLH = z.trajectory(:,end);
 if z.isImpulsive
     s.terminalLVLH(4:6) = s.terminalLVLH(4:6)+z.burn2;
 end
+
 s.elapsed_s = 60*s.tof;
 s.propellant_kg = sum(fuelPhase);
 s.fuelPhase_kg = fuelPhase;
@@ -854,9 +848,11 @@ if isfield(cfg,'safetySaveBurns') && cfg.safetySaveBurns
                 linspace(0,z.TOF_s,size(traces{2*jj-1},2)), ...
                 labels{jj},'Taxi',jj,60);
         end
+
         for kk=1:numel(ev)
             ev(kk).mass_kg=massLeg;
         end
+
         safetyEvents=[safetyEvents,ev]; %#ok<AGROW>
         % Phase fuel is applied before the next transfer checkpoint.
         massLeg=massLeg-fuelPhase(2*jj-1);
@@ -868,6 +864,7 @@ if isfield(cfg,'safetySaveBurns') && cfg.safetySaveBurns
             massLeg=massLeg-fuelPhase(2*jj);
         end
     end
+
     s.safetyEvents=safetyEvents;
 else
     s.safetyEvents=[];
@@ -882,7 +879,6 @@ end
 %% ============================================================
 % TRANSFER METHOD DISPATCHER
 % =============================================================
-
 
 function [z,reason] = transfer(x0,xf,T,n,N,method)
 % TRANSFER
@@ -1043,7 +1039,6 @@ z.totalBurn_s = NaN;
 z.maxBurn_s = NaN;
 z.peakAcceleration = peakAccel;
 
-
 end
 
 %% ============================================================
@@ -1100,7 +1095,6 @@ if nargout>1
 end
 
 end
-
 
 %% ============================================================
 % HCW STATE TRANSITION MATRIX - ORIGINAL EQUATIONS
@@ -1168,6 +1162,7 @@ mode = lower(string(cfg.initialPositionMode));
 if mode=="alongtrack"
     return;
 end
+
 u = randn(3,1);
 u = u/norm(u);
 rMin = cfg.shellRadius_m(1);
@@ -1177,6 +1172,7 @@ if mode=="shell"
 else
     radius = (rMin^3+(rMax^3-rMin^3)*rand)^(1/3);
 end
+
 x(1:3) = radius*u;
 if strcmpi(cfg.shellVelocityMode,'ball')
     w = randn(3,1); w = w/norm(w);
@@ -1201,6 +1197,7 @@ for i = 1:N
             (dv(i,:)<dv(i,m)-1e-10 | tof(i,:)<tof(i,m)-1e-10);
         pareto(i,m) = ~any(dominates);
     end
+
     frontier = find(pareto(i,:));
     switch lower(string(cfg.objective))
         case 'dv'
@@ -1236,6 +1233,7 @@ for radius = [cfg.AZ_m,cfg.KOZ_m]
         rhoGrid(2:end)<=radius,1,'first');
     if ~isempty(idx), checkT(end+1)=scanT(idx); end %#ok<AGROW>
 end
+
 for t0 = unique(checkT)
     Y = z.stateAt(t0);
     r = Y(1:3); v = Y(4:6);
@@ -1247,6 +1245,7 @@ for t0 = unique(checkT)
     if Fbrake<=0
         ok=false; reason='brake_direction'; return;
     end
+
     a = Fbrake/cfg.massTaxi_kg;
     availableDistance = max(0,rho-norm(xf(1:3)) ...
                                   -cfg.brakingMargin_m);
@@ -1275,6 +1274,7 @@ if z.isImpulsive
         if F<=0
             ok=false; reason='burn_direction'; return;
         end
+
         mFinal = mass*exp(-deltaV(ib)/(g0*cfg.Isp_s));
         prop = mass-mFinal;
         B.individualBurnTime_s(ib) = prop*g0*cfg.Isp_s/F;
@@ -1282,12 +1282,14 @@ if z.isImpulsive
         B.propellant_kg = B.propellant_kg+prop;
         mass=mFinal;
     end
+
     B.totalBurn_s = sum(B.individualBurnTime_s);
     B.fraction = B.totalBurn_s/z.TOF_s;
     if any(B.individualBurnTime_s>cfg.maxBurnDuration_s) ...
             || B.totalBurn_s>z.TOF_s
         ok=false; reason='burn_duration'; return;
     end
+
     if B.fraction>cfg.maxBurnFraction+1e-12
         ok=false; reason='impulsive_fraction'; return;
     end
@@ -1317,6 +1319,7 @@ if isempty(cfg.thrusterDirections_LVLH)
     F=cfg.nActiveThrusters*cfg.thrust_N*cfg.thrustEfficiency;
     return;
 end
+
 U=cfg.thrusterDirections_LVLH;
 U=U./vecnorm(U,2,1);
 A=U.*reshape(cfg.thrusterForces_N,1,[]);
@@ -1350,7 +1353,6 @@ end
 p = a(max(1,ceil(.95*numel(a))));
 
 end
-
 
 function [failure,events] = verifyZoneEvents( ...
     z,phaseIndex,cfg,final_m)
@@ -1542,8 +1544,6 @@ Y = z.stateAt(t);
 g = norm(Y(1:3))-radius;
 
 end
-
-
 
 function fuel = cyclePropellant(clientDV,hostDV,cfg)
 % CYCLEPROPELLANT

@@ -192,11 +192,13 @@ R.initialRAAN_deg=raanGrid;
 R.initialPhase_deg=phaseGrid;
 R.minDV_mps=minDV;
 R.feasible=feasible;
+
 R.bestTOF_days=bestTOF;
 R.bestDriftAltitude_km=bestHD;
 R.bestDriftDays=bestDrift;
 R.bestResidualRAAN_deg=bestRAAN;
 R.bestPhaseResidual_deg=bestPhase;
+
 R.bestPoweredPlaneDV_mps=bestPlaneDV;
 R.bestOrbitChangeDV_mps=bestOrbitDV;
 R.bestPhaseBranch=bestBranch;
@@ -233,6 +235,7 @@ end
 if cfg.makeFigures
     makeMaps(R);
 end
+
 if cfg.exportFiles
     save('FABER_RAAN_Phase_Joint30d_results.mat','R');
     [P,O]=ndgrid(cfg.phaseDiff_deg,cfg.raanDiff_deg);

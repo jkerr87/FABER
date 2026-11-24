@@ -1,4 +1,3 @@
-
 %% SPACE SOLAR ARRAY CONFIGURATION
 
 structureName = 'Space Solar Array';

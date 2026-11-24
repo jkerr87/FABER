@@ -1,4 +1,3 @@
-
 %% LARGE DEPLOYABLE ANTENNA CONFIGURATION
 
 structureName = 'Large Deployable Antenna';

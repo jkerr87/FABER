@@ -6,7 +6,7 @@ function date = mjd2date(mjd)
 % day, hour, minute, and second) corresponding to the modified Julian day
 % number.
 %
-% Note: Since this function calls jd2date, MJD cannot be less than 
+% Note: Since this function calls jd2date, MJD cannot be less than
 %       -2400000.5, that is 24 November -4713, 12:00 noon, Gregorian
 %       proleptic calendar.
 %
@@ -34,10 +34,8 @@ function date = mjd2date(mjd)
 %
 % ------------------------- - SpaceART Toolbox - --------------------------
 
-
 % Compute the year month and day
 jd   = mjd2jd(mjd);
 date = jd2date(jd);
-
 
 return

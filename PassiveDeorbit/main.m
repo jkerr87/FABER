@@ -1,21 +1,22 @@
+% Run the illustrative passive-disposal cases for the configured vehicles.
 clear; clc; close all;
 
-%% Disposal 
+%% Disposal
 %% ATLANTE + 2xKIKI + 2xRANGOS disposal
-Cd_Atlante = 2.2;          
+Cd_Atlante = 2.2;
 mass_Atlante_kg = 4805.47;
 mass_Kiki_kg = 606.58;
 mass_Rangos_kg = 230;
-area_Atlante_m2 = 100;  % this values are not the sum of the areas but are 
+area_Atlante_m2 = 100;  % this values are not the sum of the areas but are
                            % constrained by the configuration, for now is
                            % set to solar panels' area
 
 [disposalAtlante, burnAtlante, figAtlante] = ...
     PassiveDisposal(Cd_Atlante, mass_Atlante_kg+2*mass_Kiki_kg+2*mass_Rangos_kg, area_Atlante_m2);
 %% TAXI disposal
-Cd_Taxi = 2.2;            
-mass_Taxi_kg = 1059.88;       
-area_Taxi_m2 = 15;       %idk  
+Cd_Taxi = 2.2;
+mass_Taxi_kg = 1059.88;
+area_Taxi_m2 = 15;       %idk
 
 [disposalTaxi, burnTaxi, figTaxi] = ...
     PassiveDisposal(Cd_Taxi, mass_Taxi_kg, area_Taxi_m2);

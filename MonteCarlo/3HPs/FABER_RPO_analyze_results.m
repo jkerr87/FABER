@@ -23,6 +23,7 @@ for j=1:4
   end
  end
 end
+
 A.countTable = cell2table(rows,'VariableNames', ...
  {'Phase','NTransfers','NSelected','MeanDV_mps','P95DV_mps','MeanTOF_min','P95TOF_min'});
 disp(A.countTable);
@@ -40,6 +41,7 @@ for j=1:numel(ord)
   keep(i)=true;bestTOF=tof(i);
  end
 end
+
 A.paretoTable = T(keep,:);
 A.paretoTable=sortrows(A.paretoTable,'CycleTOF_min');
 writetable(A.paretoTable,fullfile(MC.cfg.outputFolder,'RPO_MC_Pareto.csv'));
@@ -64,10 +66,12 @@ for j=1:4
  xlabel('Transfers per phase');ylabel('Phase Delta V [m/s]');
  title(labels{j});xlim([0.5 4.5]);xticks(1:4);grid on;
 end
+
 saveas(f,fullfile(MC.cfg.outputFolder,'RPO_MC_counts_scatter.png'));
 fprintf('\nPareto points: %d of %d selected feasible cycles.\n',height(A.paretoTable),height(T));
 fprintf('Selected-count CSV is NOT a feasibility analysis; run FABER_RPO_count_feasibility.\n');
 end
+
 function p=pct(x,q)
 x=sort(x(:));n=numel(x);if n==1,p=x;return;end
 u=1+(n-1)*q/100;a=floor(u);b=ceil(u);p=x(a)+(u-a)*(x(b)-x(a));

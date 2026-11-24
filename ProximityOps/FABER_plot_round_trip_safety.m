@@ -17,6 +17,7 @@ for ax = [farOut farBack clientAx hostAx]
     hold(ax,'on'); grid(ax,'on'); axis(ax,'equal');
     xlabel(ax,'Along-track'); ylabel(ax,'Radial');
 end
+
 title(farOut,'Outbound far field (km)'); title(farBack,'Return far field (km)');
 title(clientAx,'Client RPO (m)'); title(hostAx,'Atlante RPO (m)');
 circle(farOut,cfg.farProtectedRadius_m/1000,':');
@@ -27,11 +28,13 @@ for key = ["AZ_m","KOZ_m"]
         rpo.(key) = cfg.rpo.(key);
     end
 end
+
 for ax = [clientAx hostAx]
     circle(ax,rpo.AZ_m,'--');
     circle(ax,rpo.KOZ_m,':');
     plot(ax,0,0,'k+','HandleVisibility','off');
 end
+
 if isfield(cfg.rpo,'terminalCorridorHalfWidth_m')
     w = cfg.rpo.terminalCorridorHalfWidth_m;
     if isfinite(w)
@@ -49,6 +52,7 @@ farRange = nexttile; passiveRange = nexttile; rpoRange = nexttile; closing = nex
 for ax = [farRange passiveRange rpoRange closing]
     hold(ax,'on'); grid(ax,'on');
 end
+
 title(farRange,'Far-field separation'); xlabel(farRange,'Hours since departure');
 ylabel(farRange,'Range (m)'); set(farRange,'YScale','log');
 yline(farRange,cfg.farProtectedRadius_m,'k:','Protected radius');
@@ -63,6 +67,7 @@ title(closing,'RPO radial closing speed');
 xlabel(closing,'Minutes since RPO entry'); ylabel(closing,'Closing speed (m/s)');
 yline(closing,0,'k:');
 
+% Reuse case colors across trajectory, range and drift views.
 legendHandles = gobjects(numel(cases),1);
 for j = 1:numel(cases)
     ids = find(T.Case==cases(j));
@@ -82,6 +87,7 @@ for j = 1:numel(cases)
         end
     end
 end
+
 lg = legend(farOut,legendHandles,'Location','best','Interpreter','none');
 lg.FontSize = 8;
 subtitle(rpoRange,'Solid client. Dashed Atlante.');
@@ -90,12 +96,15 @@ subtitle(farRange,'Solid outbound. Dashed return.');
 figs(end+1) = figure('Name','Round trip gates and distributions','Tag','Round_Trip_Dispersions','Color','w','WindowStyle','docked');
 theme(figs(end),'light');
 tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
+
+% Compare achieved gate errors with the configured entry limits.
 gateClient = nexttile; gateHost = nexttile;
 for ax = [gateClient gateHost]
     hold(ax,'on'); grid(ax,'on');
     xlabel(ax,'Position error (m)'); ylabel(ax,'Velocity error (m/s)');
     xline(ax,cfg.gatePositionTolerance_m,'k:'); yline(ax,cfg.gateVelocityTolerance_mps,'k:');
 end
+
 for j = 1:numel(cases)
     keep = T.Case==cases(j);
     scatter(gateClient,T.ClientGatePositionError_m(keep),T.ClientGateVelocityError_mps(keep), ...
@@ -103,6 +112,7 @@ for j = 1:numel(cases)
     scatter(gateHost,T.AtlanteGatePositionError_m(keep),T.AtlanteGateVelocityError_mps(keep), ...
         20,colors(j,:),'filled');
 end
+
 title(gateClient,'Client RPO entry'); title(gateHost,'Atlante RPO entry');
 ax = nexttile;
 sx = out.summary;
@@ -138,10 +148,13 @@ theme(figs(end),'light');
 tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 trade(nexttile,out.nominalOutbound,'Outbound nominal Lambert');
 returnTrade = nexttile;
+
+% Show a completed return plan when possible, or the first plan reached.
 selectedReturn = find(T.Complete,1);
 if isempty(selectedReturn)
     selectedReturn = find(cellfun(@(x) ~isempty(x.returnPlan),records),1);
 end
+
 if ~isempty(selectedReturn)
     trade(returnTrade,records{selectedReturn}.returnPlan, ...
         sprintf('Return Lambert | trial %d',selectedReturn));
@@ -149,12 +162,14 @@ else
     text(returnTrade,0.5,0.5,'No return arc targeted','Units','normalized', ...
         'HorizontalAlignment','center');
 end
+
 terminalClient = nexttile; terminalHost = nexttile;
 for ax = [terminalClient terminalHost]
     hold(ax,'on'); grid(ax,'on'); axis(ax,'equal'); view(ax,34,24);
     xlabel(ax,'Along-track (m)'); ylabel(ax,'Radial (m)'); zlabel(ax,'Cross-track (m)');
     drawTerminalBoundary(ax,rpo.KOZ_m,cfg);
 end
+
 title(terminalClient,'Client terminal approach'); title(terminalHost,'Atlante terminal approach');
 for j = 1:numel(cases)
     ids = find(T.Case==cases(j));
@@ -179,6 +194,7 @@ if ~isempty(out.rpoSafetyClient) || ~isempty(out.rpoSafetyAtlante)
             clearances = t.PassiveMinClearance_m;
             cam = t.CAM_DV_mps(t.CAMRequired & t.CAMFeasible);
         end
+
         distribution(nexttile,clearances,target(j)+" passive fault drift",'Minimum clearance (m)');
         distribution(nexttile,cam,'Feasible CAM cases that required CAM','CAM ΔV (m/s)');
     end
@@ -199,6 +215,7 @@ end
 end
 
 function drawApproach(orbit,rangeAx,closingAx,approach,color,style)
+% Plot successive RPO transfers and holds on a shared time axis.
 if isempty(approach), return; end
 elapsed = 0;
 for k=1:numel(approach.trace)
@@ -227,6 +244,7 @@ else
     histogram(ax,values,'FaceColor',[0.17 0.43 0.63]);
     subtitle(ax,sprintf('n = %d, P95 = %.3g',numel(values),prctile(values,95)));
 end
+
 title(ax,name);
 xlabel(ax,label); ylabel(ax,'Trials'); grid(ax,'on');
 end
@@ -243,6 +261,7 @@ for branch = unique(s.Branch)'
     plot(ax,x.Duration_s/3600,x.ArrivalDV_mps,style,'Color',palette(2,:),'MarkerSize',3);
     plot(ax,x.Duration_s/3600,x.TotalDV_mps,style,'Color',palette(3,:),'MarkerSize',3);
 end
+
 selectedDV = norm(arc.departureBurn_mps)+norm(arc.arrivalBurn_mps);
 scatter(ax,arc.transferTime_s/3600,selectedDV,45,[0.77 0.17 0.15],'filled');
 xlabel(ax,'Transfer duration (h)'); ylabel(ax,'Delta-V (m/s)');
@@ -262,6 +281,7 @@ if isfield(cfg.rpo,'terminalCorridorHalfWidth_m')
             'FaceAlpha',0.15,'EdgeColor','none');
     end
 end
+
 plot3(ax,0,0,0,'k+');
 end
 

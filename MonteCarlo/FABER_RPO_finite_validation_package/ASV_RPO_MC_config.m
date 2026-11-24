@@ -1,4 +1,3 @@
-
 function cfg = ASV_RPO_MC_config()
 % FABER TAXI - NINE-PHASE RPO MONTE CARLO
 %
@@ -44,7 +43,6 @@ cfg.weightDV = 0.5;          % used only when objective='weighted'
 cfg.weightTOF = 0.5;
 cfg.paretoMinAcceptance = 0.0;  % optional architecture-level filter
 
-
 %% 3. REFERENCE ORBIT
 
 cfg.mu_km3s2 = 398600.4418;
@@ -85,7 +83,6 @@ cfg.hp4_m = [20 20];
 
 cfg.final_m = [5 5];
 
-
 %% HP4 GATE COMPARISON - NEW
 
 % FullStop:
@@ -117,7 +114,6 @@ cfg.eventRangeRateTol_mps = 1e-8;
 
 % AZ and KOZ are preliminary spherical boundaries.
 % No lateral corridor restriction is imposed.
-
 
 %% 6. SAFETY ZONES
 
@@ -175,8 +171,6 @@ cfg.maxSpeed_final_mps = 0.1;
 
 %% 9. PROPULSION CONSTRAINTS
 
-
-
 %% TAXI LOADED / UNLOADED MASS
 
 % Initial Taxi wet mass before client retrieval [kg].
@@ -203,6 +197,7 @@ cfg.thrusterDirections_LVLH = [];
 cfg.thrusterForces_N = [];
 cfg.nThrustSamples = 201;       % directional feasibility for continuous control
 cfg.brakingMargin_m = 0;        % extra clearance in radial stopping screen
+
 cfg.maxPropellantCycle_kg = inf; % set finite allocation to enforce fuel cap
 cfg.maxBurnDuration_s = inf;   % optional per-impulse burn time limit
 cfg.maxBurnFraction = 0.05;    % cumulative impulse durations / phase TOF
@@ -216,7 +211,6 @@ cfg.closingSpeedMode = 'both';
 % Braking-distance screening (not a finite-burn propagation).
 cfg.checkBrakingDistance = true;
 cfg.brakingSafetyFactor = 1.0;
-
 
 %% PHASE-SPECIFIC TAXI PROPULSION
 
@@ -258,7 +252,6 @@ cfg.phasePropulsion = { ...
     'rcs',  ... % 8 HP4 gate
     'rcs'};     % 9 Final approach
 
-
 %% 9A. FINITE-THRUST VALIDATION (POST ANALYTICAL MONTE CARLO)
 % 'none'     : skip finite-thrust propagation
 % 'selected' : scenario-selected solutions, P95 representatives, extreme
@@ -299,7 +292,6 @@ cfg.GO_AZ = true;
 cfg.GO_KOZ = true;
 cfg.GO_capture = true;
 
-
 %% INITIAL TAXI DEPARTURE FROM ATLANTE
 
 cfg.departure.enabled = true;
@@ -323,7 +315,6 @@ cfg.departure.minSeparation_m = 5;
 
 cfg.departure.posTolerance_m = 1;
 cfg.departure.velTolerance_mps = 0.01;
-
 
 %% 12. CONOPS LIMITATIONS
 

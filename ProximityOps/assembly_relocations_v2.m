@@ -158,7 +158,6 @@ fprintf('Total Transfer Time: %.2f min\n',result.TOF_min);
 
 end
 
-
 function [dvTotal,path,minClearance,feasible] = ...
     evaluateRoute(waypoints,Tseg,n,Npts,halfForbidden,vHold)
 

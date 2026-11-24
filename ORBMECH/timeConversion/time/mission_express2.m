@@ -200,7 +200,6 @@ DV = DV; %#ok<NASGU>   % (DV already in workspace; kept to match signature)
 
 end  % end of mission_express2
 
-
 %% ===== Helper: DV total from [t1_mjd, t2_mjd] in DAYS ====================
 function dv = dv_total_from_t1t2_days(t1_mjd, t2_mjd, mjd_init_a, mjd_final_a, targetIdx, init_idx)
 
@@ -236,7 +235,6 @@ function dv = dv_total_from_t1t2_days(t1_mjd, t2_mjd, mjd_init_a, mjd_final_a, t
 
     dv = norm(VI - vD) + norm(vA - VF);
 end
-
 
 %% ===== Helper: launcher constraint in DAYS ===============================
 function [c, ceq] = launcher_nonlcon_days(x, dv1_max, mjd_init_a, mjd_final_a, idx_arr, idx_dep)

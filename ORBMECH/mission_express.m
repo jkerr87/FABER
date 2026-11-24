@@ -32,7 +32,7 @@ TOF_days = NaN(n_arr, n_dep);
 DV1      = NaN(n_arr, n_dep);   % NEW: injection Δv1
 
 for i = 1:n_dep
-    
+
     % Set initial times
     t1_s   = depT_s(i);
     t1_mjd = depT_mjd(i);
@@ -46,7 +46,7 @@ for i = 1:n_dep
     rE = rE(:);  vE = vE(:);
 
     for j = 1:n_arr
-        
+
         t2_mjd = arrT_mjd(j);
         t2_s   = arrT_s(j);
 
@@ -60,7 +60,7 @@ for i = 1:n_dep
         [rM, vM] = kep2car(kepM(1), kepM(2), kepM(3), kepM(4), ...
                           kepM(5), kepM(6), mu_S);
         rM = rM(:);  vM = vM(:);
-        
+
         ToF = (t2_s - t1_s);               % [s]
         TOF_days(j,i) = (t2_mjd - t1_mjd); % [days]
 
@@ -103,22 +103,22 @@ tof_best_s   = t2_best_s   - t1_best_s;
 % Launcher constraint mask - ensuring the launcher can put you into orbit
 if dv_MIN ~= 0
     mask_ok = DV1 <= dv_MIN;
-    
+
     DV_constrained = DV;
     DV_constrained(~mask_ok) = NaN;   % discard infeasible points
-    
+
     [dv_min_constr, idxc] = min(DV_constrained(:), [], 'omitnan');
-    
+
     if isempty(dv_min_constr) || isnan(dv_min_constr)
         error('No feasible transfers satisfying Δv1 <= %.2f km/s in this window.', dv_MIN);
     end
-    
+
     [jc, ic] = ind2sub(size(DV_constrained), idxc);
-    
+
     t1_constr_mjd = depT_mjd(ic);
     t2_constr_mjd = arrT_mjd(jc);
     tof_constr_days = t2_constr_mjd - t1_constr_mjd;
-    
+
 % Resolve planet name from index
     planetNames = {"Mercury","Venus","Earth","Mars","Jupiter","Saturn","Uranus","Neptune"};
     thisPlanetName = planetNames{idx_arr};
@@ -139,7 +139,6 @@ if dv_MIN ~= 0
     fprintf('============================================================\n\n');
 end
 
-
 %% FMINCON ===============================================================
 % seeing if launcher constriant exists
 if dv_MIN ~= 0
@@ -156,14 +155,14 @@ if dv_MIN ~= 0
     % bounds on t1 and TOF
     lb = [init_d; TOF_min_s];
     ub = [final_d; final_a - init_d];  % biggest possible TOF in your windows
-    
+
     % objective in [t1_s, TOF_s]
     obj = @(x) dv_total_from_t1tof_idx(x(1), x(2), init_a, final_a, idx_arr, idx_dep);
     nonlcon = @(x) launcher_nonlcon(x, init_a, final_a, dv_MIN, idx_arr, idx_dep);
 
     opts = optimoptions('fmincon', ...
     'Display','iter', ...
-    'Algorithm','sqp'); 
+    'Algorithm','sqp');
     %opts = optimoptions('fmincon', ...
     %    'Display','iter', ...
     %    'Algorithm','interior-point', ...
@@ -171,13 +170,13 @@ if dv_MIN ~= 0
     %    'FiniteDifferenceStepSize', 8000, ...   % ~2.2 hr step stabilizes gradients
     %    'TolFun',1e-8, 'TolX',1e-10, ...
     %    'MaxFunctionEvaluations', 8000);
-    
+
     [x_opt, dv_opt] = fmincon(obj, x0, [], [], [], [], lb, ub, nonlcon, opts);
 
     t1_refined_s  = x_opt(1);
     tof_refined_s = x_opt(2);
     t2_refined_s  = t1_refined_s + tof_refined_s;
-    
+
     t1_refined_mjd = t1_refined_s/86400;
     t2_refined_mjd = t2_refined_s/86400;
 
@@ -185,17 +184,17 @@ else
     % no launcher constraint case
     TOF_min_days = 60;                 % keep Lambert away from short-TOF junk
     TOF_min_s    = TOF_min_days*86400;
-    
+
     % initial guess from grid
     x0 = [t1_best_s; tof_best_s];
-    
+
     % bounds on t1 and TOF
     lb = [init_d; TOF_min_s];
     ub = [final_d; final_a - init_d];  % biggest possible TOF in your windows
-    
+
     % objective in [t1_s, TOF_s]
     obj = @(x) dv_total_from_t1tof_idx(x(1), x(2), init_a, final_a, idx_arr, idx_dep);
-    
+
     opts = optimoptions('fmincon', ...
         'Display','iter', ...
         'Algorithm','interior-point', ...
@@ -203,17 +202,18 @@ else
         'FiniteDifferenceStepSize', 2000, ...   % ~2.2 hr step stabilizes gradients
         'TolFun',1e-8, 'TolX',1e-10, ...
         'MaxFunctionEvaluations', 8000);
-    
+
     [x_opt, dv_opt] = fmincon(obj, x0, [], [], [], [], lb, ub, [], opts);
-    
+
     t1_refined_s  = x_opt(1);
     tof_refined_s = x_opt(2);
     t2_refined_s  = t1_refined_s + tof_refined_s;
-    
+
     t1_refined_mjd = t1_refined_s/86400;
     t2_refined_mjd = t2_refined_s/86400;
 
 end
+
     %% RETURN RESULTS =====================================================
 fprintf("\n===== Refined Solution (Step 6) =====\n");
 fprintf("Grid Δv_min:   %.6f km/s\n", dv_min);
@@ -230,9 +230,7 @@ fprintf("=====================================\n\n");
 fprintf('Unconstrained grid Δv_min: %.6f km/s\n', dv_min);
 fprintf('Constrained grid Δv_min:   %.6f km/s\n', dv_min_constr);
 
-
 end
-
 
 function dv = dv_total_from_t1tof_idx(t1_s, tof_s, init_a_s, final_a_s, targetIdx, init_idx)
 
@@ -270,7 +268,6 @@ function dv = dv_total_from_t1tof_idx(t1_s, tof_s, init_a_s, final_a_s, targetId
 
     dv = norm(VI - vE) + norm(vT - VF);
 end
-
 
 function [c, ceq] = launcher_nonlcon(x, init_a_s, final_a_s, dv1_max, idx_arr, idx_dep)
     t1_s  = x(1);

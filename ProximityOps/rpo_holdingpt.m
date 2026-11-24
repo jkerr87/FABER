@@ -1,4 +1,3 @@
-
 function result = rpo_holdingpt(n, T_holding, mode, param, N)
 % RPO_HOLDINGPT
 %

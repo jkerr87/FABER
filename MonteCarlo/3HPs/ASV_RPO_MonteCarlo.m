@@ -1,4 +1,3 @@
-
 function out = ASV_RPO_MonteCarlo(cfg)
 % ASV_RPO_MONTECARLO
 % FABER Taxi - Phase A RPO Monte Carlo
@@ -771,7 +770,7 @@ if any(insideKOZ)
 
     % if any(lateral>cfg.corridorHalfWidth_m) || ...
     %    any(alongTrack>=0)
-    % 
+    %
     %     fail = 'corridor';
     %     return;
     % end

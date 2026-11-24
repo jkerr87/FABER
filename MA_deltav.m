@@ -11,9 +11,11 @@ clc; close all;
 if ~exist('runMissionMC','var')
     runMissionMC = true;
 end
+
 if ~exist('missionArchitecture','var')
     missionArchitecture = 1;
 end
+
 if ~exist('assemblyOptions','var')
     assemblyOptions = struct();
 end
@@ -73,7 +75,6 @@ run(configFile);
 N_deliveries = N_containers;
 N_modules = N_deliveries;
 
-
 % Launcher injection errors -- FALCON 9
 alt_error_launch = 15;    % [km]
 inc_error_launch = 0.1;   % [deg]
@@ -132,7 +133,6 @@ offset_cg_cp = 0.1 * length_sat;
 arm_thrusters = length_sat / 2;
 Cr = 1.5;                  % reflection coefficient
 
-
 %% ================================================================
 %  1. LAUNCH INJECTION CORRECTIONS
 % ================================================================
@@ -177,7 +177,6 @@ fprintf('Delta V Inclination: %.2f\n',DV_inc);
 fprintf('Delta V RAAN: %.2f\n',DV_RAAN);
 fprintf('Delta V TOT Injection: %.2f\n',DV_injection);
 
-
 %% ================================================================
 %  3. DEORBIT TRANSFER
 % ================================================================
@@ -206,48 +205,48 @@ fprintf('Time to perigee:      %.2f minutes\n',tof_deorbit/60);
 % %  4. VISUALIZE DEORBIT TRANSFER
 % % ================================================================
 % theta = linspace(0,2*pi,1000);
-% 
+%
 % figure('Color','w','Name','Deorbit Transfer');
-% 
+%
 % hold on; grid on; axis equal;
-% 
+%
 % % Earth
 % fill(R_E*cos(theta),R_E*sin(theta), ...
 %      [0.25 0.50 0.80], ...
 %      'EdgeColor','none','DisplayName','Earth');
-% 
+%
 % % Initial orbit
 % plot(r_initial*cos(theta),r_initial*sin(theta), ...
 %     'b--','LineWidth',1.8, ...
 %     'DisplayName','Initial circular orbit');
-% 
+%
 % % Deorbit ellipse
 % a_deorbit = (r_initial+r_perigee)/2;
 % e_deorbit = (r_initial-r_perigee)/(r_initial+r_perigee);
 % p_deorbit = a_deorbit*(1-e_deorbit^2);
-% 
+%
 % nu_deorbit = linspace(pi,2*pi,500);
-% 
+%
 % r_d = p_deorbit./(1+e_deorbit*cos(nu_deorbit));
-% 
+%
 % x_d = r_d.*cos(nu_deorbit);
 % y_d = r_d.*sin(nu_deorbit);
-% 
+%
 % plot(x_d,y_d,'r','LineWidth',2.5, ...
 %     'DisplayName','Deorbit transfer');
-% 
+%
 % % Final perigee radius for reference
 % plot(r_perigee*cos(theta),r_perigee*sin(theta), ...
 %     'k:','LineWidth',1.5, ...
 %     'DisplayName','Disposal perigee radius');
-% 
+%
 % plot(x_d(1),y_d(1),'ko','MarkerFaceColor','r', ...
 %     'MarkerSize',8,'DisplayName','Deorbit burn');
-% 
+%
 % xlabel('X [km]');
 % ylabel('Y [km]');
 % title('ASV End-of-Life Deorbit Transfer');
-% 
+%
 % legend('Location','bestoutside');
 
 %% ================================================================
@@ -326,7 +325,7 @@ TOF_far = TOF_injection;  % [s]
 h_base = h_target;                     % Host Structure altitude
 h_launcher_nominal = h_target;         % Nominal module release altitude (modify if different)
 dh_err = alt_error_launch + h_SD;      % Total altitude uncertainty
-phase_deg = 20;                       % Maximum true anomaly phase angle to recover 
+phase_deg = 20;                       % Maximum true anomaly phase angle to recover
 N_rev = 100;                           % Number of orbits allowed for the maneuver
 
 % Phasing manoeuvre function call
@@ -335,7 +334,6 @@ PH = phasing_manoeuvre(h_base, h_launcher_nominal, dh_err, phase_deg, N_rev, N_m
 % Total Delta_V
 DV_phasing = PH.DV_total_lifetime/N_modules;
 TOF_phasing = PH.time_cycle_min;
-
 
 %% ================================================================
 % INDIVIDUAL OUTBOUND FAR-FIELD RESULTS
@@ -412,7 +410,7 @@ rpo.homing.times_s = 3600;  % [s]
 %     0       0;
 %     0       0;
 %     0       0];
-% 
+%
 % % Duration of each homing maneuver [s]
 % rpo.homing.times_s = [1800 2400];
 
@@ -445,8 +443,6 @@ rpo.final.duration_s = 600;
 
 result_rendezvous = proximity_operations_v2( ...
     mu,R_E,h_target,X0_RPO,rpo);
-
-
 
 %% INDIVIDUAL HOMING MANEUVERS
 
@@ -483,8 +479,6 @@ TOF_holding1 = result_rendezvous.TOF_holding1;
 TOF_closing  = result_rendezvous.TOF_closing;
 TOF_holding2 = result_rendezvous.TOF_holding2;
 TOF_final    = result_rendezvous.TOF_final;
-
-
 
 %% RPO PHASE RESULTS
 
@@ -527,10 +521,6 @@ TOF_RPO_total = sum(RPO_TOF);
 
 fprintf('Total RPO DV: %.5f m/s\n',DV_RPO_total);
 fprintf('Total RPO TOF: %.2f min\n',TOF_RPO_total);
-
-
-
-
 
 %% ================================================================
 % FAR-FIELD RENDEZVOUS - RETURN TO HOST
@@ -693,8 +683,6 @@ fprintf('Altitude correction:    %.5f m/s\n',DV_alt_host);
 fprintf('Inclination correction: %.5f m/s\n',DV_inc_host);
 fprintf('RAAN correction:        %.5f m/s\n',DV_RAAN_host);
 
-
-
 % RETURN PHASING - TO HOST STRUCTURE
 % Matteo's phasing function
 DV_phasing_to_host = PH.DV_phase2_base;
@@ -790,7 +778,6 @@ fprintf('To host TOF: %.2f days\n', ...
 fprintf('Complete phasing TOF: %.2f days\n', ...
     TOF_phasing/1440);
 
-
 %% ================================================================
 %  CLOSE FIELD RENDEZVOUS - TO HOST STRUCTURE
 % ================================================================
@@ -878,8 +865,6 @@ TOF_host_holding1 = result_host.TOF_holding1;
 TOF_host_closing  = result_host.TOF_closing;
 TOF_host_holding2 = result_host.TOF_holding2;
 TOF_host_final    = result_host.TOF_final;
-
-
 
 %% ================================================================
 % TOTAL RPO - CLIENT AND HOST
@@ -1009,7 +994,6 @@ holding = rpo_holdingpt( ...
 DV_Taxi_holding = holding.DV_holding_mps;
 TOF_Taxi_holding = holding.TOF_holding_min;
 
-
 %% ================================================================
 %  STRUCTURE CONFIGURATION - CHANGE PER RUN
 % ================================================================
@@ -1041,6 +1025,7 @@ for k = 1:N_containers
         k,elementsPerContainer(k));
 
 end
+
 %% ================================================================
 %  ASSEMBLY RELOCATIONS
 % ================================================================
@@ -1086,7 +1071,6 @@ fprintf('\nTOTAL ASSEMBLY TRANSFERS\n');
 fprintf('DV: %.5f m/s\n',DV_assembly_relocation);
 fprintf('TOF: %.2f min\n',TOF_assembly_relocation);
 
-
 %% ================================================================
 %  12. STATION KEEPING (Taxi in Parking Orbit - Worst Case)
 % ================================================================
@@ -1120,6 +1104,7 @@ if exist('missionParkingConfig','var')
         parking.(fields{k}) = missionParkingConfig.(fields{k});
     end
 end
+
 validateattributes(parking.TaxiYears,{'numeric'},{'scalar','real','finite','nonnegative'});
 validateattributes(parking.AtlanteYears,{'numeric'},{'scalar','real','finite','nonnegative'});
 taxiReference = struct('mass_kg',parking.ATLANTE.mass_kg, ...
@@ -1139,7 +1124,6 @@ fprintf('Frontal area: %.4f m^2\n', area_drag);
 fprintf('Air density: %.4f kg/m^3\n', rho);
 fprintf('Station Keeping DeltaV (Worst Case, %d years): %.2f m/s\n', mission_years, DV_SK);
 
-
 %% ================================================================
 %  12. MOMENTUM UNLOADING
 % ================================================================
@@ -1152,8 +1136,6 @@ fprintf('Max Disturbance Torque:     %.3e Nm\n', DV_mom_unloading.T_total_distur
 fprintf('Delta_V (%d years):         %.3f m/s\n', mission_years, DV_mom_unloading.DV);
 
 DV_momentum_unloading = DV_mom_unloading.DV;
-
-
 
 %% ================================================================
 % 13. SEVEN-YEAR DELTA V AND TOF BUDGET
@@ -1408,6 +1390,7 @@ for indices = {3:6,12:15}
         DV_margin(idx) = DV_raw(idx)*(eventMargined/eventDV);
     end
 end
+
 % These two rows each aggregate every actual assembly relocation.
 DV_margin(assemblyRows) = [ ...
     sum(FABER_apply_DV_margin(assemblyResult.DV_outbound,false, ...
@@ -1555,9 +1538,6 @@ grid on;
 writetable(BudgetTable, ...
     'ASV_SevenYear_DeltaV_Budget.csv');
 
-
-
-
 %% NINE-PHASE RPO MONTE CARLO AND MISSION BUDGET
 
 if runMissionMC
@@ -1568,6 +1548,7 @@ if runMissionMC
     cfg.methodsC2 = {'GeneralHCW'};
     cfg.gateModes = {'FlyThrough'};
     cfg.homing1_min = [30 100];
+
     cfg.maxBurnFraction = 0.10;
     cfg.payloadMass_kg = 2000;
     cfg.makePlots = false;
@@ -1580,6 +1561,7 @@ if runMissionMC
             cfg.(fields{k}) = missionMCConfig.(fields{k});
         end
     end
+
     cfg.mu_km3s2 = mu;
     cfg.Re_km = R_E;
     cfg.h_km = h_target;
@@ -1602,6 +1584,7 @@ if runMissionMC
         fprintf('P95 margined subtotal of known delta-V: %.3f m/s\n', ...
             MissionMC.P95KnownMarginedDV_mps);
     end
+
     writetable(MissionMC.trials,'FABER_MC_Mission_Trials.csv');
     RPO_MC_Trials = table(MC_RPO.valid(:,missionArchitecture), ...
         MC_RPO.CycleDV_mps(:,missionArchitecture), ...

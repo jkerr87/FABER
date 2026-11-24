@@ -692,6 +692,7 @@ end
 end
 
 function s = signOrPlus(a)
+% Resolve a zero coordinate to the positive gate direction.
 
 s = sign(a);
 
@@ -746,6 +747,7 @@ end
 % ================================================================
 
 function J = objectiveCost(dv_mps,tof_min,opts)
+% Score a feasible relocation candidate using the selected objective.
 % The reference values are FIXED across all candidates and modules.
 % This ensures consistent comparison and additive phase costs.
 

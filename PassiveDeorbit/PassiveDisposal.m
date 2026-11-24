@@ -185,11 +185,13 @@ for j = 1:nProfile
         semilogx(areaTest_m2, dv(i, :, j).', '-o');
         hold on
     end
+
     grid on
     xlabel('Effective drag area [m^2]')
     ylabel('Minimum insertion \DeltaV [m/s]')
     title(profile(j) + " activity")
 end
+
 legend(orbit, 'Location', 'best')
 end
 

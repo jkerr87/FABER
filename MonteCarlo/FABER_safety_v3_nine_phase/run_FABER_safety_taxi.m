@@ -20,11 +20,13 @@ assert(nargin>=2 && size(camGroups_LVLH_N,1)==3 && ...
 if payloadMass_kg==0
     warning('Captured payload is zero: unloaded return DIAGNOSTIC only.');
 end
+
 cfg=ASV_RPO_MC_config();
 cfg.N=100;cfg.seed=42;
 cfg.makePlots=false;cfg.saveCSV=false;
 cfg.finiteThrustValidation='none';
 cfg.safetySaveBurns=true;
+
 cfg.enablePayloadMassChange=true;
 cfg.payloadMass_kg=payloadMass_kg;
 cfg.enablePropulsionConstraints=true;

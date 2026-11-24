@@ -1,4 +1,3 @@
-
 function cfg = ASV_RPO_MC_config()
 % ASV_RPO_MC_CONFIG
 % FABER Taxi - Phase A RPO Monte Carlo

@@ -21,6 +21,7 @@ Mass_kg=nan(N,1); PhysicalClearanceStart_m=nan(N,1);
 ContactUnresolved=false(N,1); PassiveMinClearance_m=nan(N,1);
 PassiveBreach=false(N,1); FirstCollision_min=nan(N,1);
 CAMRequired=false(N,1); CAMFeasible=false(N,1);
+
 CAM_DV_mps=nan(N,1); CAMBurn_min=nan(N,1);
 TimeToSafeShell_min=nan(N,1); CAMTotalTime_min=nan(N,1);
 PostCAMMinClearance_m=nan(N,1);
@@ -28,6 +29,8 @@ RecoveryFeasible=false(N,1); RecoveryDV_mps=nan(N,1);
 RecoveryTOF_min=nan(N,1); TotalContingencyDV_mps=nan(N,1);
 Status=strings(N,1);
 isBurn=arrayfun(@(e)all(isfinite(e.dvNom(:))),events);
+
+% Inject a conditional fault at one recorded burn or coast event per trial.
 for k=1:N
     pool=find(isBurn==mod(k,2));
     if isempty(pool),pool=1:numel(events);end
@@ -39,6 +42,7 @@ for k=1:N
     if isfield(e,'mass_kg') && isfinite(e.mass_kg) && e.mass_kg>0
         mass=e.mass_kg;
     end
+
     Mass_kg(k)=mass;
     x=e.xPre(:); dv=e.dvNom(:);
     % Check baseline geometry BEFORE injecting navigation uncertainty.
@@ -49,6 +53,7 @@ for k=1:N
         Status(k)="Unresolved contact geometry (not screened)";
         continue;
     end
+
     x(1:3)=x(1:3)+cfg.sigmaPos_m*randn(3,1);
     x(4:6)=x(4:6)+cfg.sigmaVel_mps*randn(3,1);
     if all(isfinite(dv))
@@ -62,10 +67,12 @@ for k=1:N
             Case(k)="Pointing error";
             actual=tilt(dv,cfg.sigmaPointing_rad*randn());
         end
+
         x(4:6)=x(4:6)+actual;
     else
         Case(k)="Control cutoff / coast drift";
     end
+
     [pc,breach,tb]=driftCheck(x,cfg.screen.passiveHorizon_s, ...
         cfg.screen.dt_s,cfg.n,hazards,cfg.screen.collisionRadius_m);
     PassiveMinClearance_m(k)=pc;PassiveBreach(k)=breach;
@@ -84,18 +91,22 @@ for k=1:N
             [RecoveryFeasible(k),RecoveryDV_mps(k),RecoveryTOF_min(k)] = ...
                 recoveryCheck(x,mass,cfg,hazards,forceVectors);
         end
+
         if RecoveryFeasible(k),TotalContingencyDV_mps(k)=RecoveryDV_mps(k);end
         continue;
     end
+
     [~,badDelay,~]=driftCheck(x,cfg.detectionDelay_s, ...
         cfg.screen.burnStep_s,cfg.n,hazards,cfg.screen.collisionRadius_m);
     if badDelay
         Status(k)="Collision before detection/response";continue;
     end
+
     if ~cfg.enableActiveCAM
         Status(k)="CAM unassessed: no verified firing-group vectors";
         continue;
     end
+
     xd=hcwPhi(cfg.n,cfg.detectionDelay_s)*x;
     forceVectors=eventForces(cfg,e);
     bestDV=inf;bestState=[];bestTime=nan;
@@ -125,6 +136,7 @@ for k=1:N
             end
         end
     end
+
     if isfinite(bestDV)
         CAMFeasible(k)=true;CAM_DV_mps(k)=bestDV;
         Status(k)="Escape found; recovery not established";
@@ -141,12 +153,15 @@ for k=1:N
         Status(k)="No feasible candidate escape";
     end
 end
+
 R.trials=table(Trial,EventIndex,Module,Vehicle,Phase,Case,Mass_kg, ...
     PhysicalClearanceStart_m,ContactUnresolved,PassiveMinClearance_m, ...
     PassiveBreach,FirstCollision_min,CAMRequired,CAMFeasible,CAM_DV_mps, ...
     CAMBurn_min,CAMTotalTime_min,TimeToSafeShell_min, ...
     PostCAMMinClearance_m,RecoveryFeasible,RecoveryDV_mps, ...
     RecoveryTOF_min,TotalContingencyDV_mps,Status);
+
+% Report unresolved contact geometry separately from screened fault outcomes.
 valid=~ContactUnresolved;
 required=valid & CAMRequired;
 R.summary=table(N,nnz(valid),nnz(ContactUnresolved),nnz(required), ...
@@ -171,6 +186,7 @@ if isfield(e,'hazardsCenters_m') && ~isempty(e.hazardsCenters_m)
     hazards.centers_m=e.hazardsCenters_m;
     hazards.radii_m=zeros(size(e.hazardsCenters_m,1),1);
 end
+
 if isfield(e,'hazardsSegmentsA_m')
     hazards.segmentsA_m=e.hazardsSegmentsA_m;
     hazards.segmentsB_m=e.hazardsSegmentsB_m;
@@ -189,6 +205,7 @@ else
         'No CAM force-group vectors for vehicle %s',char(e.vehicle));
     F=cfg.camForceVectors_LVLH_N;
 end
+
 assert(size(F,1)==3 && ~isempty(F) && all(isfinite(F(:))) && ...
     all(vecnorm(F,2,1)>0), ...
     'Supply nonzero [3 x Ngroup] verified force vectors in LVLH.');
@@ -229,6 +246,7 @@ if norm(y(1:3)-rf(1:3))>cfg.recovery.posTolerance_m || ...
         norm(y(4:6)-rf(4:6))>cfg.recovery.velTolerance_mps
     return;
 end
+
 if cfg.recovery.stayOutsideProtected
     % Check whole ideal impulsive transfer and terminal state for protected
     % geometry. Finite departure/arrival samples also need separate checks.
@@ -239,6 +257,7 @@ if cfg.recovery.stayOutsideProtected
                 cfg.screen.protectedRadius_m)<0,return;end
     end
 end
+
 ok=true;
 end
 
@@ -263,6 +282,7 @@ for j=1:numel(t)
     clear(j)=FABER_clearance_m(xt(1:3),hazards,screen.protectedRadius_m);
     minClear=min(minClear,clear(j));
 end
+
 ix=find(clear>=0,1,'first');ok=~isempty(ix);tExit=nan;
 if ~ok,return;end
 tExit=t(ix);
@@ -287,6 +307,7 @@ for tau=unique([0:dt:T,T])
         bad=true;return;
     end
 end
+
 x=hcwPhi(n,T)*x0;
 end
 
@@ -304,10 +325,12 @@ for j=1:N
     end
 end
 end
+
 function dx=rhs(x,n,a)
 dx=[x(4:6);3*n^2*x(1)+2*n*x(5);-2*n*x(4);-n^2*x(3)];
 dx(4:6)=dx(4:6)+a;
 end
+
 function Phi=hcwPhi(n,t)
 nt=n*t;c=cos(nt);s=sin(nt);
 A=[4-3*c,0,0;6*(s-nt),1,0;0,0,c];
@@ -316,12 +339,14 @@ C=[3*n*s,0,0;6*n*(c-1),0,0;0,0,-n*s];
 D=[c,2*s,0;-2*s,4*c-3,0;0,0,c];
 Phi=[A B;C D];
 end
+
 function v=tilt(dv,theta)
 if norm(dv)==0,v=dv;return;end
 u=dv/norm(dv);r=randn(3,1);r=r-u*(u'*r);
 if norm(r)<1e-12,v=dv;return;end
 r=r/norm(r);v=norm(dv)*(u*cos(theta)+r*sin(theta));
 end
+
 function v=pct(x,p)
 x=sort(x(isfinite(x)));
 if isempty(x),v=nan;elseif numel(x)==1,v=x;else

@@ -1,4 +1,3 @@
-
 function cfg = ASV_RPO_MC_config()
 % FABER TAXI - NINE-PHASE RPO MONTE CARLO
 %
@@ -44,7 +43,6 @@ cfg.weightDV = 0.5;          % used only when objective='weighted'
 cfg.weightTOF = 0.5;
 cfg.paretoMinAcceptance = 0.0;  % optional architecture-level filter
 
-
 %% 3. REFERENCE ORBIT
 
 cfg.mu_km3s2 = 398600.4418;
@@ -84,7 +82,6 @@ cfg.hp4_m = [20 20];
 
 cfg.final_m = [5 5];
 
-
 %% HP4 GATE COMPARISON - NEW
 
 % FullStop:
@@ -116,7 +113,6 @@ cfg.eventRangeRateTol_mps = 1e-8;
 
 % AZ and KOZ are preliminary spherical boundaries.
 % No lateral corridor restriction is imposed.
-
 
 %% 6. SAFETY ZONES
 
@@ -188,6 +184,7 @@ cfg.thrusterDirections_LVLH = [];
 cfg.thrusterForces_N = [];
 cfg.nThrustSamples = 201;       % directional feasibility for continuous control
 cfg.brakingMargin_m = 0;        % extra clearance in radial stopping screen
+
 cfg.maxPropellantCycle_kg = inf; % set finite allocation to enforce fuel cap
 cfg.maxBurnDuration_s = inf;   % optional per-impulse burn time limit
 cfg.maxBurnFraction = 0.05;    % cumulative impulse durations / phase TOF
@@ -201,7 +198,6 @@ cfg.closingSpeedMode = 'both';
 % Braking-distance screening (not a finite-burn propagation).
 cfg.checkBrakingDistance = true;
 cfg.brakingSafetyFactor = 1.0;
-
 
 %% 9A. FINITE-THRUST VALIDATION (POST ANALYTICAL MONTE CARLO)
 % 'none'     : skip finite-thrust propagation

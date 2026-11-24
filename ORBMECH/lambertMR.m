@@ -28,17 +28,17 @@ function [A,P,E,ERROR,VI,VF,TPAR,THETA] = lambertMR(RI,RF,TOF,MU,orbitType,Nrev,
 %   vectors except for the case when the transfer angle is 180 degrees
 %   in which case the orbit plane is ambiguous (an infinite number of
 %   transfer orbits exist).
-% 
+%
 %   2- MULTIREVOLUTION LAMBERT'S PROBLEM
 %
 %   For the solution of Lambert's problem with Nrev>0 number of revolution,
 %   Battin's formulation has been extended to accomodate N-revolution
-%   transfer orbits, by following the paper: "Using Battin Mathod to obtain 
+%   transfer orbits, by following the paper: "Using Battin Mathod to obtain
 %   Multiple-revolution Lambert's Solutions" by Shen and Tsiotras.
 %
 %   When Nrev>0 the possible orbits are just ellipses.
 %   If 0<=Nrev<=Nmax, there are two Nrev-revolution transfer orbits.
-%   These two transfer orbits have different semi-major axis and they may 
+%   These two transfer orbits have different semi-major axis and they may
 %   be all combinations of large-e and small-e transfer orbits.
 %   The Original Successive Substitution Method by Battin converges to one
 %   of the two possible solution with a viable initial guest, however it
@@ -49,16 +49,16 @@ function [A,P,E,ERROR,VI,VF,TPAR,THETA] = lambertMR(RI,RF,TOF,MU,orbitType,Nrev,
 %   of revolution an ERROR is given:
 %   warning('off','lambertMR:SuccessiveSubstitutionDiverged') to take out
 %   the warnings or use optionsLMR(1) = 0.
-% 
+%
 %   3- INVERSION OF THE MOTION
-% 
+%
 %   Direct or retrograde option can be selected for the transfer.
-%   
-%   The algorithm computes the semi-major axis, the parameter (semi-latus 
+%
+%   The algorithm computes the semi-major axis, the parameter (semi-latus
 %   rectum), the eccentricity and the velocity vectors.
-% 
-%   NOTE: If ERROR occurs or the 360 or 180 degree transfer case is 
-%   encountered. 
+%
+%   NOTE: If ERROR occurs or the 360 or 180 degree transfer case is
+%   encountered.
 %
 % INPUT:
 %	RI[3]           Vector containing the initial position in Cartesian
@@ -94,7 +94,7 @@ function [A,P,E,ERROR,VI,VF,TPAR,THETA] = lambertMR(RI,RF,TOF,MU,orbitType,Nrev,
 %                   1:	Error, routine failed to converge
 %                   -1:	180 degrees transfer
 %                   2:  360 degrees transfer
-%                   3:  the algorithm doesn't converge because the number 
+%                   3:  the algorithm doesn't converge because the number
 %                       of revolutions is bigger than Nrevmax for that TOF
 %                   4:  Routine failed to converge, maximum number of
 %                       iterations exceeded.
@@ -206,17 +206,17 @@ STH    = norm(CR)/(RIM*RFM);
 % Choose angle for up angular momentum
 switch orbitType
     case 0 % direct transfer
-        if CR(3) < 0 
+        if CR(3) < 0
             STH = -STH;
         end
     case 1 % retrograde transfer
-        if CR(3) > 0 
+        if CR(3) > 0
             STH = -STH;
         end
     otherwise
 		error('%d is not an allowed orbitType',orbitType);
 end
-        
+
 THETA  = qck(atan2(STH,CTH));
 % if abs(THETA - pi) >= 0.01
 if THETA == TWOPI || THETA==0
@@ -283,8 +283,8 @@ if Nrev == 0
 
     % ----------------------------------
     % Begin iteration
-    
-    % ---> CL: 26/01/2009, Matteo Ceriotti: 
+
+    % ---> CL: 26/01/2009, Matteo Ceriotti:
     %       Changed absolute tolerance into relative tolerance here below.
     while (abs(X0-X) >= abs(X)*TOL+TOL) && (N <= nitermax)
         N   = N+1;
@@ -296,7 +296,7 @@ if Nrev == 0
         % Compute x by means of an algorithm devised by
         % Gauticci for evaluating continued fractions by the
         % 'Top Down' method
-        
+
         DELTA = 1;
         U     = 1;
         SIGMA = 1;
@@ -314,7 +314,7 @@ if Nrev == 0
 
         % ----------------------------------
         % Compute H1 and H2
-        
+
         if N == 1
             DENOM = (1 + 2*X + L)*(3*C1 + X*C1 +4*X);
             H1 = (L+X)^2*(C1 + 1 + 3*X)/DENOM;
@@ -327,14 +327,14 @@ if Nrev == 0
             H1 = ((XPLL^2)*(C1 + 1 + 3*X))/DENOM;
             H2 = M*(C1+X-L)/DENOM;
         end
-        
+
         B = 27*H2/(4*(1+H1)^3);
         U = -B/(2*(sqrt(B+1)+1));
 
         % ----------------------------------
         % Compute the continued fraction expansion K(u)
         % by means of the 'Top Down' method
-        
+
         % Y can be computed finding the roots of the formula and selecting
         % the real one:
         % y^3 - (1+h1)*y^2 - h2 = 0     (7.113) Battin
@@ -361,6 +361,7 @@ if Nrev == 0
                     else
                         GAMMA = 2*(3*N1+2)*(6*N1+1)/(9*(4*N1 + 1)*(4*N1+3));
                     end
+
                     DELTA = 1/(1-GAMMA*U*DELTA);
                     U0 = U0*(DELTA-1);
                     SIGMA = SIGMA + U0;
@@ -372,20 +373,20 @@ if Nrev == 0
 
         KU = (SIGMA/3)^2;
         Y = ((1+H1)/3)*(2+sqrt(B+1)/(1-2*U*KU));    % Y = Ycami
-        
+
         X0 = sqrt(((1-L)/2)^2+M/Y^2)-(1+L)/2;
         % fprintf('n= %d, x0=%.14f\n',N,X0);
     end
-    
+
 % MULTIREVOLUTION
 elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
     checkNconvRSS = 1;
     checkNconvOSS = 1;
     N3 = 1;
-    
+
     while N3 < 3
-        
+
         if Ncase == 0 || checkNconvRSS == 0
 
             % - Original Successive Substitution -
@@ -393,7 +394,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
             % ----------------------------------
             % Initialize values of y, n, and x
-            
+
             Y= 1;
             N= 0;
             N1=0;
@@ -405,7 +406,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
             if checkNconvOSS == 0
                 X0 = 2*X0;
                 checkNconvOSS = 1;
-                % see p. 11 USING BATTIN METHOD TO OBTAIN 
+                % see p. 11 USING BATTIN METHOD TO OBTAIN
                 % MULTIPLE-REVOLUTION LAMBERT'S SOLUTIONS - Shen, Tsiotras
             elseif checkNconvRSS == 0;
                 % X0 is taken from the RSS
@@ -417,8 +418,8 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
             % ----------------------------------
             % Begin iteration
-            			
-            % ---> CL: 26/01/2009,Matteo Ceriotti 
+
+            % ---> CL: 26/01/2009,Matteo Ceriotti
             %   Changed absolute tolerance into relative tolerance here
             %   below.
             while (abs(X0-X) >= abs(X)*TOL+TOL) && (N <= nitermax)
@@ -431,7 +432,6 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                 % Compute x by means of an algorithm devised by
                 % Gauticci for evaluating continued fractions by the
                 % 'Top Down' method
-                
 
                 DELTA = 1;
                 U     = 1;
@@ -450,7 +450,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
                 % ----------------------------------
                 % Compute H1 and H2
-                
+
                 if N == 1
                     DENOM = (1 + 2*X + L)*(3*C1 + X*C1 +4*X);
                     H1 = (L+X)^2*(C1 + 1 + 3*X)/DENOM;
@@ -473,7 +473,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                 % ----------------------------------
                 % Compute the continued fraction expansion K(u)
                 % by means of the 'Top Down' method
-                
+
                 % Y can be computed finding the roots of the formula and selecting
                 % the real one:
                 % y^3 - (1+h1)*y^2 - h2 = 0     (7.113) Battin
@@ -500,6 +500,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                             else
                                 GAMMA = 2*(3*N1+2)*(6*N1+1)/(9*(4*N1 + 1)*(4*N1+3));
                             end
+
                             DELTA = 1/(1-GAMMA*U*DELTA);
                             U0 = U0*(DELTA-1);
                             SIGMA = SIGMA + U0;
@@ -517,30 +518,33 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                                 ['Original Successive Substitution is diverging\n'...
                                 '-> Reverse Successive Substitution used to find the proper XO.\n']);
                     end
+
                     checkNconvOSS = 0;
                     break
                 end
-                
+
                 X0 = sqrt(((1-L)/2)^2+M/Y^2)-(1+L)/2;
                 % fprintf('N: %d X0: %.14f\n',N,X0);
             end
-            
+
             % When 2 solutions exist (small and big a), the previous loop
             % must either converge or diverge because Y > sqrt(M/L) at some
             % point. Thus, the upper bound on the number of iterations
             % should not be necessary. Though, nothing can be said in the
             % case tof<tofmin and so no solution exist. In this case, an
             % upper bound on number of iterations could be needed.
-            
+
             if N >= nitermax % Checks if previous loop ended due to maximum number of iterations
                 if optionsLMR(1) == 2
                     warning('lambertMR:SuccessiveSubstitutionExceedMaxIter',...
                             ['Original Successive Substitution exceeded max number of iteration\n'...
                             '-> Reverse Successive Substitution used to find the proper XO.\n']);
                 end
+
                 checkNconvOSS = 0;
             end
         end
+
         if (Ncase == 1 || checkNconvOSS == 0) && ~(checkNconvRSS == 0 && checkNconvOSS == 0)
 
             % - Reverse Successive Substitution -
@@ -548,7 +552,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
             % ----------------------------------
             % Initialize values of y, n, and x
-            
+
             N = 0;
             N1 = 0;
             ERROR  = 0;
@@ -556,7 +560,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
             if checkNconvRSS == 0;
                 X0 = X0/2; % XL/2
                 checkNconvRSS = 1;
-                % see p. 11 USING BATTIN METHOD TO OBTAIN 
+                % see p. 11 USING BATTIN METHOD TO OBTAIN
                 % MULTIPLE-REVOLUTION LAMBERT'S SOLUTIONS - Shen, Tsiotras
             elseif checkNconvOSS == 0
                 % X0 is taken from the OSS
@@ -568,7 +572,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
 
             % ----------------------------------
             % Begin iteration
-            
+
             % ---> CL: 26/01/2009, Matteo Ceriotti
             %   Changed absolute tolerance into relative tolerance here
             %   below.
@@ -585,24 +589,25 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                                 ['Reverse Successive Substitution is diverging\n' ...
                                 '-> Original Successive Substitution used to find the proper XO.\n']);
                     end
+
                     checkNconvRSS = 0;
                     break
                 end
-                
+
                 % ---> CL: 27/01/2009, Matteo Ceriotti
                 %   This is the Newton-Raphson method suggested by USING
                 %   BATTIN METHOD TO OBTAIN MULTIPLE-REVOLUTION LAMBERT'S
                 %   SOLUTIONS - Shen, Tsiotras
-                
+
                 % To assure the Newton-Raphson method to be convergent
                 Erss = 2*atan(sqrt(X));
                 while h_E(Erss,Y,M,Nrev) < 0
                     Erss = Erss/2;
                 end
-                
+
                 Nnew = 1;
                 Erss_old = -1.e8;
-                
+
                 % The following Newton-Raphson method should always
                 % converge, given the previous first guess choice,
                 % according to the paper. Therefore, the condition on
@@ -615,18 +620,21 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                     Erss = Erss - h/dh;
                     % fprintf('Nnew: %d Erss: %.16f h_E: %.16f\n',Nnew,Erss,h);
                 end
+
                 if Nnew >= nitermax
                     if optionsLMR(1) ~= 0
                         warning('lambertMR:NewtonRaphsonIterExceeded', 'Newton-Raphson exceeded max iterations.\n');
                     end
                 end
+
                 X0 = tan(Erss/2)^2;
             end
         end
+
         if checkNconvOSS == 1 && checkNconvRSS == 1
             break
         end
-        
+
         if checkNconvRSS == 0 && checkNconvOSS == 0
             if optionsLMR ~=0
                 warning('lambertMR:SuccessiveSubstitutionDiverged',...
@@ -634,14 +642,15 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                         'Successive Substitution diverge because Nrev > NrevMAX.\n' ...
                         'Work in progress to calculate NrevMAX.\n']);
             end
+
             ERROR = 3;
             A=0; P=0; E=0; VI=[0,0,0]; VF=[0,0,0]; TPAR=0; THETA=0;
             return
         end
-        
+
         N3 = N3+1;
     end
-    
+
     if N3 == 3
         if optionsLMR ~=0
             warning('lambertMR:SuccessiveSubstitutionDiverged',...
@@ -650,6 +659,7 @@ elseif (Nrev > 0) && (4*TOF*LAMBDA~=0) %(abs(THETA)-pi > 0.5*pi/180)
                     'because Nrev > NrevMAX or because large-a solution = small-a solution (limit case).\n' ...
                     'Work in progress to calculate NrevMAX.\n']);
         end
+
         ERROR = 3;
         A=0; P=0; E=0; VI=[0,0,0]; VF=[0,0,0]; TPAR=0; THETA=0;
         return
@@ -670,6 +680,7 @@ if N1 >= nitermax || N >= nitermax
     if optionsLMR ~=0
         disp('Lambert algorithm has not converged, maximum number of iterations exceeded.');
     end
+
     A=0; P=0; E=0; VI=[0,0,0]; VF=[0,0,0]; TPAR=0; THETA=0;
     return
 end
@@ -691,8 +702,6 @@ return
 
 % -------------------------------------------------------------------------
 
-
-
 function [angle] = qck(angle)
 
 % qck.m - Reduce an angle between 0 and 2*pi
@@ -703,14 +712,14 @@ function [angle] = qck(angle)
 % DESCRIPTION:
 %   This function takes any angle and reduces it, if necessary,
 % 	so that it lies in the range from 0 to 2 PI radians.
-% 
+%
 % INPUTS:
 %   ANGLE[1]    Angle to be reduced (in radians)
-% 
+%
 % OUTPUTS:
 %   QCK[1]      The angle reduced, if necessary, to the range
 %               from 0 to 2 PI radians (in radians)
-% 
+%
 % CALLED FUNCTIONS:
 %   pi (from MATLAB)
 %
@@ -723,7 +732,7 @@ function [angle] = qck(angle)
 % -------------------------------------------------------------------------
 
 twopi = 2*pi;
- 
+
 diff = twopi * (fix(angle/twopi) + min([0,sign(angle)]));
 
 angle = angle -diff;
@@ -731,8 +740,6 @@ angle = angle -diff;
 return
 
 % -------------------------------------------------------------------------
-
-
 
 function [h, dh] = h_E(E, y, m, Nrev)
 
@@ -744,7 +751,7 @@ function [h, dh] = h_E(E, y, m, Nrev)
 % DESCRIPTION:
 %   Equation of multirevolution Lambert's problem:
 %   h(E) = (Nrev*pi + E - sin(E)) / tan(E/2)^3 - 4/m * (y^3 - y^2)
-%   See: "USING BATTIN METHOD TO OBTAIN MULTIPLE-REVOLUTION LAMBERT'S 
+%   See: "USING BATTIN METHOD TO OBTAIN MULTIPLE-REVOLUTION LAMBERT'S
 %      SOLUTIONS", Shen, Tsiotras, pag. 12
 %
 % INPUT

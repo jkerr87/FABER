@@ -101,6 +101,7 @@ for j=1:M
         methodTOF(j) = sum(TOF(:,j));
     end
 end
+
 summary = table(methods,methodFeasible,methodDV,methodTOF, ...
     'VariableNames',{'Method','Feasible','TotalDV_mps','TotalTOF_min'});
 
@@ -136,12 +137,14 @@ result.methods = methods;
 result.summary = summary;
 result.feasibleByModuleMethod = feasible;
 result.DV_byModuleMethod_mps = DV;
+
 result.TOF_byModuleMethod_min = TOF;
 result.records = records;
 result.bestMethodPerModule = bestMethod;
 result.bestRecords = bestRecords;
 result.DV_perModule = DV_perModule;
 result.DV_outbound = DV_outbound;
+
 result.DV_return = DV_return;
 result.TOF_perModule_min = TOF_perModule;
 result.timePerLeg_min = timePerLeg;
@@ -212,6 +215,7 @@ for tMin = timesMin(:)'
         continue;
     end
 end
+
 if ~bestTransfer.feasible,return;end
 
 % Continuous final (same on all method families for a given gate).
@@ -238,6 +242,7 @@ for tMin = opts.finalTimesMin(:)'
             'maxAccel_mps2',max(vecnorm(u,2,1)));
     end
 end
+
 if ~bestFinal.feasible,return;end
 out.feasible = true;
 out.method = string(method);
@@ -246,6 +251,7 @@ out.target_m = target;
 out.gate_m = gate;
 out.transferDV_mps = bestTransfer.dv;
 out.finalDV_mps = bestFinal.dv;
+
 out.dv_mps = bestTransfer.dv+bestFinal.dv;
 out.transferTOF_min = bestTransfer.T_min;
 out.finalTOF_min = bestFinal.T_min;
@@ -271,6 +277,7 @@ switch lower(method)
     otherwise
         error('Unknown approach geometry: %s',method);
 end
+
 gate = target+gateDistance*direction;
 end
 

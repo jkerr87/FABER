@@ -51,6 +51,7 @@ function date = jd2date(jd)
 if nargin ~= 1 || numel(jd) ~= 1
     error('JD2DATE:incorrectInput','The input should be a single real');
 end
+
 % if jd < 0
 %     error('JD2DATE:jdLessThanZero','The input jd value cannot be negative');
 % end
@@ -62,6 +63,7 @@ dg = mod(j,146097);
 c = floor((floor(dg/36524)+1) * 3/4);
 dc = dg - c*36524;
 b = floor(dc/1461);
+
 db = mod(dc,1461);
 a = floor((floor(db/365)+1) * 3/4);
 da = db - a*365;
@@ -79,6 +81,5 @@ D = floor(d+1);
 
 % Prepare output
 date = [Y, M, D, hrs, mn, sec];
-
 
 return

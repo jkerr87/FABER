@@ -16,6 +16,7 @@ else
     pts=[XX(:),YY(:),zeros(numel(XX),1)];
     moduleLarge=pts(1:N_largeModules,:);
 end
+
 % Small elements: distribute sample sites across faces of the envelope.
 % The modular-arithmetic sequence keeps positions repeatable across runs.
 moduleSmall=zeros(N_smallElements,3);

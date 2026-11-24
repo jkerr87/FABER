@@ -38,5 +38,4 @@ function date = mjd20002date(mjd2000)
 jd   = mjd20002jd(mjd2000);
 date = jd2date(jd);
 
-
 return

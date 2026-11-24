@@ -25,10 +25,10 @@ function [xP, vP] = ephMoon(MJD2000)
 %               expressed in the Geocentric Equatorial Reference Frame
 %               [km/s]. The velocity is computed by numerical
 %               differentiation on a 1 second interval.
-% 
+%
 % CALLED FUNCTIONS:
 %   (none)
-% 
+%
 % REFERENCES:
 %	Algorithm taken from "Fundamentals of Astrodynamics and Applications"
 %   (3rd edition), D. A. Vallado, p.290 (algorithm 31).
@@ -74,11 +74,10 @@ s = sin(angles(1:10));
 % Cosinus of the first 4 angles
 c = cos(angles(1:4));
 
-
 % Compute L_ecl, phi_ecl, P and eps
 L_ecl =   (218.32 + 481267.883*T_TDB) ...
         + [+6.29, -1.27, +0.66, +0.21, -0.19, -0.11] * s(1:6);
-    
+
 phi_ecl = [+5.13, +0.28, -0.28, -0.17] * s(7:10);
 
 P =   0.9508 ...
@@ -92,7 +91,6 @@ phi_ecl = phi_ecl * pi/180;
 P       = P       * pi/180;
 eps     = eps     * pi/180;
 
-
 r = 1/sin(P) * 6378.16; % Radius of the Earth copied from astro_constants for speed
 % r = 1/sin(P) * 6371.01; % from Horizon (does not change much using one of
 % the other...by Camilla
@@ -103,6 +101,5 @@ xP = r * [cos(L_ecl)*cos(phi_ecl), ...
 if nargout > 1
     vP = (ephMoon(MJD2000+1/86400) - xP);
 end
-
 
 return

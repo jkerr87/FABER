@@ -4,9 +4,11 @@ function margined = FABER_apply_DV_margin(raw,stochastic,fraction,floor_mps)
 if nargin < 3
     fraction = 0.05;
 end
+
 if nargin < 4
     floor_mps = 10;
 end
+
 validateattributes(fraction,{'numeric'},{'scalar','finite','nonnegative'});
 validateattributes(floor_mps,{'numeric'},{'scalar','finite','nonnegative'});
 assert(isscalar(stochastic) || isequal(size(raw),size(stochastic)));

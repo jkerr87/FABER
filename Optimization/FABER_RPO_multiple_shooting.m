@@ -17,6 +17,7 @@ if nargin>0 && ~isempty(user)
     f=fieldnames(user);
     for j=1:numel(f),c.(f{j})=user.(f{j});end
 end
+
 assert(exist('fmincon','file')==2,'Optimization Toolbox fmincon required.');
 assert(numel(c.x0)==6 && c.Nmax>=1 && c.Nmax<=4);
 assert(c.hp1_m(1)>c.hp2_m(2) && c.hp2_m(1)>c.KOZ_m);
@@ -50,6 +51,7 @@ for nh=1:c.Nmax
      warning('Nh=%d Nc=%d cap=%g: %s',nh,nc,cap,ME.message);
      continue;
     end
+
     if flag<=0,continue;end
     q=simulate(z,nh,nc,idx,c,n,c.validationSamples,true);
     if ~accepted(q,c,cap),continue;end
@@ -57,6 +59,7 @@ for nh=1:c.Nmax
         winner=struct('q',q,'z',z);
     end
    end
+
    if ~isempty(winner)
     q=winner.q;z=winner.z;
     S(end+1)=struct('Nh',nh,'Nc',nc,'TOFcap_min',cap, ...
@@ -73,6 +76,7 @@ for nh=1:c.Nmax
   end
  end
 end
+
 R=struct('cfg',c,'solutions',table(),'pareto',table(), ...
     'bestHomingArcs',table(),'bestClosingArcs',table(),'raw',S);
 if isempty(S),warning('No verified solutions. Increase starts or relax constraints.');return;end
@@ -95,6 +99,7 @@ if c.plot
  title('Joint homing/closing: direct multiple shooting (nominal)');
  colorbar;
 end
+
 if c.saveCSV
  writetable(R.solutions,'FABER_MS_solutions.csv');
  writetable(R.pareto,'FABER_MS_pareto.csv');
@@ -109,11 +114,13 @@ c.x0=[50;-2000;20;.01;.04;-.01];
 c.Nmax=2;c.nStarts=2;c.seed=42;c.tofCaps_min=[170 210 260];
 c.hp1_m=[800 1200];c.hp2_m=[100 250];c.finalStandoff_m=5;
 c.homing_min=[30 100];c.closing_min=[20 130];
+
 c.hold1_min=30;c.hold2_min=10;c.final_min=10;
 c.minLeg_min=5;c.gap=0.05;
 c.maxSpeed_homing_mps=1;c.maxSpeed_closing_mps=1;
 c.maxSpeed_final_mps=1;c.KOZ_m=30;
 c.homingExcursionFactor=1.20;c.closingExcursionFactor=1.20;
+
 c.maxPeakAccel_mps2=inf;
 c.hold1_DVrate_mps_per_min=0;c.hold2_DVrate_mps_per_min=0;
 c.nSamples=21;c.validationSamples=201;
@@ -145,6 +152,7 @@ for ind={I.fh,I.fc}
   A(end+1,:)=row;b(end+1,1)=-c.gap; %#ok<AGROW>
  end
 end
+
 [A,b]=sumRow(A,b,I.th,c.homing_min(2),1,K);
 [A,b]=sumRow(A,b,I.th,c.homing_min(1),-1,K);
 [A,b]=sumRow(A,b,I.tc,c.closing_min(2),1,K);
@@ -154,9 +162,11 @@ fixed=c.hold1_min+c.hold2_min+c.final_min;
 possible=(cap>=fixed+max(nh*c.minLeg_min,c.homing_min(1)) ...
     +max(nc*c.minLeg_min,c.closing_min(1)));
 end
+
 function [A,b]=sumRow(A,b,ids,val,sign,K)
 r=zeros(1,K);r(ids)=sign;A(end+1,:)=r;b(end+1,1)=sign*val;
 end
+
 function z=guess(nh,nc,cap,c,I,n)
 fixed=c.hold1_min+c.hold2_min+c.final_min;
 lo=[max(c.homing_min(1),nh*c.minLeg_min), ...
@@ -177,14 +187,17 @@ if isempty(Vh)||isempty(Vc),z=[];return;end
 z=[hp1;hp2;fh;fc;th;tc;Vh(:);Vc(:)];
 assert(numel(z)==max(I.vc));
 end
+
 function x=fractions(N,g)
 if N==1,x=zeros(0,1);return;end
 w=rand(N,1);w=w/sum(w);w=g+(1-N*g)*w;
 x=cumsum(w(1:end-1));
 end
+
 function t=split(T,N,m)
 w=rand(N,1);w=w/sum(w);t=m+(T-N*m)*w;
 end
+
 function V=seedVel(x0,xf,f,t,n)
 V=zeros(3,numel(t));r=x0(1:3);start=x0(1:3);
 for k=1:numel(t)
@@ -199,6 +212,7 @@ function f=cost(z,nh,nc,I,c,n)
 q=simulate(z,nh,nc,I,c,n,3,false);
 if q.valid,f=q.dv;else,f=1e5;end
 end
+
 function [g,h]=constraints(z,nh,nc,I,c,n)
 q=simulate(z,nh,nc,I,c,n,c.nSamples,false);
 if ~q.valid,g=ones(7,1)*1000;h=ones(3*(nh+nc),1)*1000;return;end
@@ -239,6 +253,7 @@ q.maxODEError=max(q.h.maxODEError,q.cl.maxODEError);
 q.valid=all(isfinite([q.dv q.tof q.maxPosError q.maxODEError ...
     q.h.maxSpeed q.cl.maxSpeed q.h.minRange q.cl.minRange]));
 end
+
 function p=phase(x0,xf,f,t,vPlus,n,N,odeCheck)
 K=numel(t);
 p=struct('dv',0,'maxSpeed',0,'minRange',inf,'maxRange',0, ...
@@ -265,6 +280,7 @@ for k=1:K
   p.minRange=min(p.minRange,norm(rr));
   p.maxRange=max(p.maxRange,norm(rr));
  end
+
  if odeCheck
   opt=odeset('RelTol',1e-10,'AbsTol',1e-11);
   [~,Y]=ode45(@(~,x)hcwODE(x,n),linspace(0,60*t(k),60),[rStart;v],opt);
@@ -273,16 +289,20 @@ for k=1:K
   p.minRange=min(p.minRange,min(vecnorm(Y(:,1:3),2,2)));
   p.maxRange=max(p.maxRange,max(vecnorm(Y(:,1:3),2,2)));
  end
+
  % Next arc begins at prescribed fly-through position; position mismatch
  % appears explicitly in equality constraints and acceptance checks.
  rStart=rEnd;vBefore=vMinus;
 end
+
 p.lastBrake=xf(4:6)-vBefore;
 p.dv=p.dv+norm(p.lastBrake);
 end
+
 function dx=hcwODE(x,n)
 dx=[x(4:6);3*n*n*x(1)+2*n*x(5);-2*n*x(4);-n*n*x(3)];
 end
+
 function [A,B,C,D]=stm(n,T)
 a=n*T;s=sin(a);c=cos(a);
 A=[4-3*c,0,0;6*(s-a),1,0;0,0,c];
@@ -290,6 +310,7 @@ B=[s,2*(1-c),0;2*(c-1),4*s-3*a,0;0,0,s]/n;
 C=[3*n*s,0,0;6*n*(c-1),0,0;0,0,-n*s];
 D=[c,2*s,0;-2*s,4*c-3,0;0,0,c];
 end
+
 function [dv,sp,ac]=finalQuintic(d0,d1,T,n,N)
 t=linspace(0,T,N);s=t/T;dy=d0-d1;
 pd=(30*s.^2-60*s.^3+30*s.^4)/T;
@@ -298,6 +319,7 @@ vy=dy*pd;uy=dy*pdd;ux=-2*n*vy;
 a=sqrt(ux.^2+uy.^2);
 dv=trapz(t,a);sp=max(abs(vy));ac=max(a);
 end
+
 function ok=accepted(q,c,cap)
 ok=q.valid && q.maxPosError<=c.terminalTol_m && ...
  q.maxODEError<=c.odeTol_m && q.tof<=cap+1e-5 && ...
@@ -309,6 +331,7 @@ ok=q.valid && q.maxPosError<=c.terminalTol_m && ...
  q.cl.maxRange<=c.closingExcursionFactor*q.cl.rStart(2,1)*(-1)+1e-4 && ...
  q.finalAccel<=c.maxPeakAccel_mps2+1e-5;
 end
+
 function T=arctable(p,name)
 K=numel(p.times);
 arc=(1:K)';
@@ -323,6 +346,7 @@ T=table(repmat(string(name),K,1),arc,p.times(:), ...
  'BurnMagnitude_mps','ArrivalVx_mps','ArrivalVy_mps','ArrivalVz_mps'});
 T.TerminalBrake_mps=zeros(K,1);T.TerminalBrake_mps(end)=norm(p.lastBrake);
 end
+
 function m=pareto(t,d)
 [~,order]=sortrows([t(:),d(:)],[1,2]);m=false(numel(t),1);best=inf;
 for k=1:numel(order)

@@ -1,4 +1,3 @@
-
 %% MODULAR SPACE STATION CONFIGURATION
 
 structureName = 'Modular Space Station';

@@ -1,17 +1,17 @@
 function [kep, mass, M] = ephAsteroids( time, id )%#codegen
 
 % ephAsteroids.m - Ephemerides of Asteroids considernig the data retrieved
-% from JPL data (See References) 
+% from JPL data (See References)
 %
 % PROTOTYPE:
 %	[kep, mass, M] = ephAsteroids(time, id)
 %
 % DESCRIPTION:
 %   This function returns the orbital parameters, the mass, and the mean
-%   anomaly of Asteroids in the Solar System. The id corresponds to the num 
+%   anomaly of Asteroids in the Solar System. The id corresponds to the num
 %   given by the JPL data (See References). The keplerian parameters at date
 %   are retrieved through the Kepler solution of the parameters at epoch of
-%   the data. 
+%   the data.
 %   Mass is obtained considering an interpolation of the H-d diagram.
 %
 % INPUT:
@@ -30,7 +30,7 @@ function [kep, mass, M] = ephAsteroids( time, id )%#codegen
 %   mass        Mass of the Asteroid [kg]. It can be read from the database, or,
 %               if not available, estimated by an approximate equation.
 %   M           Mean anomaly at time [rad].
-% 
+%
 % CALLED FUNCTIONS:
 %   astroConstants
 %
@@ -56,15 +56,14 @@ persistent asteroid_data;
 
 if isempty(asteroid_data)
 
-    if not(exist("AsteroidsElements_num.mat", 'file') == 2 ) 
+    if not(exist("AsteroidsElements_num.mat", 'file') == 2 )
         error("Please make sure that the file AsteroidsElements_num.mat with the JPL asteroid data is in your MATLAB path");
     end
-    
 
     data_temp = load('AsteroidsElements_num.mat');
-    
+
     % asteroid data is organised with epoch,sma,ecc,inc,RAAN,argPer,M,H (for mass
-    % interpolation) in a vector. 
+    % interpolation) in a vector.
     % only for the value retrieved
 
     % data_temp = data_temp.data(id,:);
@@ -75,10 +74,9 @@ if isempty(asteroid_data)
 
 end
 
-
-% 
+%
 % % retrieve data from the asteroid data matrix of interest
-sma = asteroid_data(id,2)*AU;              % [km] 
+sma = asteroid_data(id,2)*AU;              % [km]
 ecc = asteroid_data(id,3);                 % [-]
 inc = asteroid_data(id,4)*pi/180;          % [rad]
 w = asteroid_data(id,5)*pi/180;            % [rad]
@@ -88,7 +86,6 @@ M0 = asteroid_data(id,7)*pi/180;           % [rad]
 pi2 = 2*pi;
 orbital_period = pi2*sqrt((sma*sma*sma)/mu_sun); % seconds
 mean_motion = pi2/orbital_period;                % rad/s
-
 
 % Epoch of the elements represented as the Modified Julian Date (MJD)
 epoch0_mjd = asteroid_data(id,1);                 % mjd [TBD] (TDB)	- days
@@ -114,6 +111,7 @@ for i = 1:5
     F1 = ecc*cos(Ek) - 1;
     Ek = Ek + (Ek - ecc*sin(Ek) - M)/(F1);
 end
+
 % compute true anomaly from Eccentric anomaly
 f = 2*atan2(sqrt(1+ecc)*tan(Ek*0.5),sqrt(1-ecc));
 f = mod(f,2*pi);
@@ -121,7 +119,6 @@ f = mod(f,2*pi);
 % writes outputs keplerian elements and mean anomaly
 kep = [sma,ecc,inc,node,w,f];
 M = mod(M,2*pi);
-
 
 % Absolute magnitude (asteroids only and set to "99.00" when unknown).
 H = asteroid_data(id,8);           % [mag]
@@ -132,16 +129,5 @@ H = asteroid_data(id,8);           % [mag]
 d = -2.522e-2*H^5 + 3.2961*H^4 - 1.7249e2*H^3 + 4.5231e3*H^2 - 5.9509e4*H + 3.1479e5;
 
 % estimate mass from the density of 2 kg/dm3
-density = 2*1000; 
+density = 2*1000;
 mass = 4*pi/3*(0.5*d)^3*density;
-
-
-
-
-
-
-
-
-
-
-

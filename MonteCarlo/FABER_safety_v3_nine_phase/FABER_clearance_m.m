@@ -15,8 +15,10 @@ if isfield(hazards,'centers_m') && ~isempty(hazards.centers_m)
     else
         R=zeros(size(C,1),1);
     end
+
     d=min(d,min(vecnorm(C-r,2,2)-R));
 end
+
 if isfield(hazards,'segmentsA_m') && ~isempty(hazards.segmentsA_m)
     A=hazards.segmentsA_m;B=hazards.segmentsB_m;
     assert(all(size(A)==size(B)) && size(A,2)==3);
@@ -25,6 +27,7 @@ if isfield(hazards,'segmentsA_m') && ~isempty(hazards.segmentsA_m)
     else
         R=zeros(size(A,1),1);
     end
+
     assert(numel(R)==size(A,1));
     AB=B-A;len2=sum(AB.^2,2);
     t=sum((r-A).*AB,2)./max(len2,eps);
@@ -32,5 +35,6 @@ if isfield(hazards,'segmentsA_m') && ~isempty(hazards.segmentsA_m)
     P=A+AB.*t;
     d=min(d,min(vecnorm(P-r,2,2)-R));
 end
+
 clearance=d-extraRadius_m;
 end

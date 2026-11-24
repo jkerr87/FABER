@@ -89,25 +89,23 @@ for i = 1:N
             char(methodC1(m)), ...
             char(methodC2(m))};
 
-
         % Taxi -> Client
         [client,why] = simulateApproach( ...
             cfg,xc,dc,n,which,char(gateMode(m)));
-        
+
         if ~isempty(why)
             reason(i,m) = "Client: " + string(why);
             continue;
         end
-        
+
         % Taxi -> ATLANTE
         [host,why] = simulateApproach( ...
             cfg,xh,dh,n,which,char(gateMode(m)));
-        
+
         if ~isempty(why)
             reason(i,m) = "ATLANTE: " + string(why);
             continue;
         end
-
 
         if client.dv+host.dv > ...
                 cfg.maxDV_perCycle_mps
@@ -188,7 +186,6 @@ end
 
 %% 5. OUTPUT STRUCTURE
 
-
 R.summary = table( ...
     methodH2,methodC1,methodC2,gateMode, ...
     Accepted,Acceptance, ...
@@ -199,7 +196,6 @@ R.summary = table( ...
 R.cfg = cfg;
 R.methods = [ ...
     methodH2 methodC1 methodC2 gateMode];
-
 
 R.DV_mps = DV;
 R.TOF_min = TOF;
@@ -249,7 +245,6 @@ if cfg.saveCSV
 
     for m = 1:M
 
-
 rows = table( ...
     (1:N)', ...
     repmat(m,N,1), ...
@@ -267,7 +262,6 @@ rows = table( ...
     'HP4Gate', ...
     'Feasible','CycleDV_mps', ...
     'CycleTOF_min','Reason'});
-
 
         T = [T;rows]; %#ok<AGROW>
     end
@@ -343,7 +337,6 @@ speeds = [ ...
     cfg.maxSpeed_closing2_mps, ...
     cfg.maxSpeed_final_mps];
 
-
 for k = 1:5
 
     % Necessary average-speed time bound.
@@ -362,7 +355,6 @@ for k = 1:5
 
     d.T(k) = draw([lo hi]);
 end
-
 
 d.valid = true;
 
@@ -425,7 +417,6 @@ X{4} = [0;-hp(4);0;0;vyGate;0];
 
 % Capture standoff: arrive at zero relative velocity.
 X{5} = [0;-d.final;0;0;0;0];
-
 
 N = max(101,cfg.nTrajectorySamples);
 
@@ -505,20 +496,18 @@ for k = 1:5
         return;
     end
 
-
     %% EVENT-BASED AZ / KOZ VALIDATION - NEW
-    
+
     [why,events] = verifyZoneEvents( ...
         z,k,cfg,d.final);
-    
+
     zoneEvents{k} = events;
-    
+
     if ~isempty(why)
         reason = sprintf('phase%d_%s', ...
             phaseIndices(k),why);
         return;
     end
-
 
     j = phaseIndices(k);
 
@@ -570,7 +559,6 @@ end
 %% ============================================================
 % TRANSFER METHOD DISPATCHER
 % =============================================================
-
 
 function [z,reason] = transfer(x0,xf,T,n,N,method)
 % TRANSFER
@@ -767,7 +755,6 @@ end
 
 end
 
-
 %% ============================================================
 % HCW STATE TRANSITION MATRIX - ORIGINAL EQUATIONS
 % =============================================================
@@ -849,7 +836,6 @@ end
 p = a(max(1,ceil(.95*numel(a))));
 
 end
-
 
 function [failure,events] = verifyZoneEvents( ...
     z,phaseIndex,cfg,final_m)

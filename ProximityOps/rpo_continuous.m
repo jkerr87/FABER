@@ -1,4 +1,3 @@
-
 function result = rpo_continuous(X0, Xf, n, T_s, axisName, N)
 % RPO_CONTINUOUS
 %

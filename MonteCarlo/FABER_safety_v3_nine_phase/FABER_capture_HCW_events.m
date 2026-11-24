@@ -28,10 +28,12 @@ if nargin<10 || isempty(burn1) || isempty(burn2)
             ['HCW boundary-value matrix ill-conditioned. ', ...
              'Pass actual accepted departure/arrival burns.']);
     end
+
     v1=B\(xf(1:3)-A*x0(1:3));
     burn1=v1-x0(4:6);
     burn2=xf(4:6)-(C*x0(1:3)+D*v1);
 end
+
 burn1=burn1(:);burn2=burn2(:);
 assert(numel(burn1)==3 && numel(burn2)==3 && ...
        all(isfinite([burn1;burn2])), 'Invalid accepted burn vectors');
@@ -71,7 +73,6 @@ e=struct('xPre',x,'dvNom',dv,'phase',p, ...
     'vehicle',v,'index',i);
 end
 
-
 function [A,B,C,D] = phi(n,t)
 % HCW state transition matrix partitioned into 3x3 blocks.
 %
@@ -103,4 +104,3 @@ D = [ ...
     0,       0,       c];
 
 end
-

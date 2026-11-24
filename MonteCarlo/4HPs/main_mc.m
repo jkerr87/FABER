@@ -1,4 +1,4 @@
-
+% Run the four-holding-point RPO architecture study.
 clear; clc; close all;
 
 %% Configuration
@@ -54,10 +54,8 @@ for m = 1:size(R.valid,2)
     end
 end
 
-
 %% NEW: Plot all architectures in docked figures
 plot_FABER_RPO_P95(R);
-
 
 %% PHASE-BY-PHASE ANALYSIS
 % Architecture 5: Vbar / Vbar / GeneralHCW

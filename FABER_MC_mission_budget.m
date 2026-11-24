@@ -47,6 +47,7 @@ if ~isempty(B.unknownDVRows)
     rawDV_mps(:) = NaN;
     marginedDV_mps(:) = NaN;
 end
+
 B.trials = table(feasible,rawDV_mps,knownRawDV_mps,marginedDV_mps, ...
     knownMarginedDV_mps,knownTOF,'VariableNames',{'RPOFeasible', ...
     'RawDV_mps','KnownRawDV_mps','MarginedDV_mps','KnownMarginedDV_mps','KnownTOF_min'});
@@ -72,6 +73,7 @@ else
     B.P95KnownMarginedDV_mps = NaN;
     B.P95KnownTOF_min = NaN;
 end
+
 B.P95RawDV_mps = B.P95KnownRawDV_mps;
 B.P95MarginedDV_mps = B.P95KnownMarginedDV_mps;
 if ~isempty(B.unknownDVRows)

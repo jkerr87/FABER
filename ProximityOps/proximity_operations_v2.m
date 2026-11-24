@@ -1,4 +1,3 @@
-
 function result = proximity_operations_v2(mu,Re,h,x0,cfg)
 % PROXIMITY_OPERATIONS_V2
 %

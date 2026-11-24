@@ -1,4 +1,5 @@
 function cfg = FABER_phaseA_defaults()
+% Return shared assumptions for the Phase A budget and round-trip study.
 cfg = struct();
 
 % cfg.h_target_km = 680.12;
@@ -13,35 +14,47 @@ cfg.iClientSpread_deg = 2.81;
 
 cfg.missionYears = 7;
 cfg.taxiParkingYears = cfg.missionYears; % Continuous-parking exposure until a duty cycle is supplied.
+
+% Deployment dispersions and the inter-client planning reserve.
 cfg.launchAltError_km = 15;
 cfg.launchIncError_deg = 0.1;
 cfg.launchRAANError_deg = 0.1;
 cfg.clientRAANSpread_deg = 0;
 cfg.interClientRAANReserve_mps = 100;
+
+% Nominal retrieval geometry and Lambert search settings.
 cfg.phaseAngle_deg = 20;
 cfg.phasingRevs = 10;
 cfg.outboundLambertTOF_s = []; % Empty searches around the nominal revolution count.
 cfg.outboundLambertRevolutions = [];
 cfg.returnLambertTOF_s = [];
 cfg.returnLambertRevolutions = [];
+
 cfg.farFieldIsp_s = 315.5;
 cfg.outboundMinimumPerigee_km = 160;
 cfg.outboundDepartureEpoch_s = 0; % Seconds on the scenario clock.
 cfg.outboundDepartureArgumentOfLatitude_deg = 0;
 cfg.outboundAtlanteRAAN_deg = 0;
+
 cfg.moduleAltitudeOffset_km = -15;
 cfg.moduleInclinationOffset_deg = 0.1;
 cfg.moduleRAANOffset_deg = 0.1;
 cfg.payloadMass_kg = 2000;
+
 cfg.assemblyTransferTimes_min = 5:5:130;
 cfg.vehicleBudgetFolder = '';
 cfg.disposalPerigee_km = 160;
+
+% Target-relative gate states in LVLH meters and meters per second.
 cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
 cfg.x0_atlante = cfg.x0_client;
+
 cfg.abortDV_mps = 1;
 cfg.CAM_DV_mps = 1;
 cfg.marginFraction = 0.05;
 cfg.marginMinimum_mps = 10;
+
+% Vehicle properties used in drag and propulsion estimates.
 cfg.massTaxi_kg = 3503.59;
 cfg.massKiki_kg = 1813.62;
 cfg.massRango_kg = 1813.62;
@@ -55,18 +68,23 @@ cfg.areaHost_m2 = 8;
 cfg.CdTaxi = 2.2;
 cfg.CdAtlante = 2.2;
 cfg.CdHost = 2.2;
+
 cfg.taxiDistance_m = 1000;
 cfg.taxiDeadband_m = 25;
 cfg.atlanteDistance_m = 250;
 cfg.atlanteDeadband_m = 10;
 cfg.skStep_s = 60;
+
 cfg.rhoRef_kgm3 = 1e-12;
 cfg.scaleHeight_m = 60000;
+
+% Unknown operating periods stay open until supplied by the scenario.
 cfg.captureWait_min = NaN;
 cfg.handoverWait_min = NaN;
 cfg.veicLoading_min = NaN;
 cfg.veicCharge_min = NaN;
 cfg.veicHold_min = NaN;
+
 cfg.runAnnualSK = true;
 cfg.includeMomentumUnloading = true;
 cfg.taxiDistance_m = 1000;
@@ -84,6 +102,7 @@ cfg.taxiParkingEllipse = defaultEllipse;
 cfg.atlanteParkingEllipse = defaultEllipse;
 cfg.relativeSKDensity_kgm3 = NaN; % Evaluate the density model at parking altitude.
 cfg.relativeSKInterval_hr = 6;
+
 cfg.taxiParkingAZ_m = 300;
 cfg.atlanteParkingAZ_m = NaN; % Host approach-zone radius requires a mission input.
 cfg.relativeSKAZmargin_m = 0;

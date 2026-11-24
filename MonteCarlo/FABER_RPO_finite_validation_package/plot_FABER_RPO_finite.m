@@ -5,9 +5,11 @@ if nargin<3
     if isempty(trials)
         [trials,arch]=find(V.attempted,1,'first');
     end
+
     if isempty(trials), warning('No finite validation records.'); return; end
     trial=trials; architecture=arch;
 end
+
 D=V.details{trial,architecture};
 if isempty(D), warning('No results for selected case.'); return; end
 rec=R.records{trial,architecture};
@@ -31,6 +33,7 @@ for approach=1:2
         offset=offset+s.transferDetails{k}.TOF_s;
     end
 end
+
 nexttile(tl,1); ylabel('Commanded thrust [N]');
 nexttile(tl,2); ylabel('Relative range [m]');
 nexttile(tl,3); ylabel('Radial rate [m/s]'); xlabel('Transfer-only elapsed time [min]');

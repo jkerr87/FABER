@@ -48,6 +48,7 @@ if ~isempty(opts.homing2SpeedOverride_mps)
     fprintf('WARNING: exploratory Homing 2 speed override = %.3f m/s (baseline = 0.3).\n', ...
         opts.homing2SpeedOverride_mps);
 end
+
 n=sqrt(cfg.mu_km3s2/(cfg.Re_km+cfg.h_km)^3);
 P=2*pi/n;
 TAnalytical_min=[P/60,P/120]; % Vbar, Rbar
@@ -64,6 +65,7 @@ if ~opts.expandClosingWindow
 else
     fprintf('CAUTION: study time window is relaxed versus baseline for every method.\n');
 end
+
 fprintf('Corridor/excursion checks remain DIAGNOSTIC ONLY, as in your MC baseline.\n');
 
 names={'Vbar','Rbar','GeneralHCW'};
@@ -89,6 +91,7 @@ for i=1:N
         if a.DV+b.DV>cfg.maxDV_perCycle_mps
             reason(i,m)="Cycle DV cap"; continue;
         end
+
         records{i,m}=struct('client',a,'host',b,'draw',d);
         DV(i,m,1)=a.DV;DV(i,m,2)=b.DV;
         TOF(i,m,1)=a.TOF_min;TOF(i,m,2)=b.TOF_min;
@@ -112,6 +115,7 @@ for m=1:3
     else
         selected=NaN; medDV=NaN;p95DV=NaN;medTOF=NaN;p95TOF=NaN;
     end
+
     result{m}=struct('method',names{m},'selectedTrial',selected, ...
         'accepted',nOk,'P95DV_mps',p95DV,'P95TOF_min',p95TOF);
     fprintf('%-11s %3d / %3d accepted | P95 DV %.4f m/s | P95 TOF %.1f min | original times satisfied %d\n', ...
@@ -119,6 +123,7 @@ for m=1:3
     summaryFields(m,:)={string(names{m}),nOk,N,nOk/N,medDV,p95DV,medTOF,p95TOF, ...
         sum(strictTime(:,m)),sum(corridorOK(:,m))}; %#ok<AGROW>
 end
+
 summary=cell2table(summaryFields, ...
     'VariableNames',{'Method','Accepted','Attempts','AcceptedFraction', ...
     'MedianCycleDV_mps','P95CycleDV_mps','MedianCycleTOF_min', ...
@@ -131,6 +136,7 @@ for k = 2:width(summary)
         summary.(vn) = cell2mat(summary.(vn));
     end
 end
+
 fprintf('\nCommon feasible candidates for all 3 methods: %d / %d\n',sum(common),N);
 paired=table(string(names(:)),nan(3,1),nan(3,1), ...
     'VariableNames',{'Method','MedianCommonDV_mps','P95CommonDV_mps'});
@@ -162,10 +168,12 @@ out=struct('cfg',cfg,'originalControlled_min',originalControlled, ...
 if opts.saveCSV || opts.makePlots
     if ~exist(opts.folder,'dir'),mkdir(opts.folder);end
 end
+
 if opts.saveCSV
     writetable(summary,fullfile(opts.folder,'RPO_methods_summary.csv'));
     writetable(paired,fullfile(opts.folder,'RPO_methods_paired_summary.csv'));
 end
+
 if opts.makePlots
     plotMethodApproaches(out,opts);
 end
@@ -188,6 +196,7 @@ if ~(norm(x0(1:3))>d.hp1 && d.hp1>d.hp2 && d.hp2>c.AZ_m && ...
         c.AZ_m>c.KOZ_m && d.hp3<c.KOZ_m && d.hp3>d.fin && d.fin>0)
     why='geometry';return;
 end
+
 hp1=[0;-d.hp1;0;0;0;0]; hp2=[0;-d.hp2;0;0;0;0];
 hp3=[0;-d.hp3;0;0;0;0]; endX=[0;-d.fin;0;0;0;0];
 trace=cell(1,7); phaseDV=zeros(1,7);phaseT=zeros(1,7);
@@ -198,6 +207,7 @@ if ~isempty(e),why=['H1 ' e];return;end
 if s1.maxSpeed>c.maxSpeed_homing_mps || s1.minRange<c.KOZ_m
     why='H1 speed/KOZ';return;
 end
+
 trace{1}=s1.trajectory(1:3,:);phaseDV(1)=s1.DV;phaseT(1)=d.Th/60;
 trace{2}=repmat(hp1(1:3),1,2);phaseDV(2)=d.h1*c.hold1_DVrate_mps_per_min;phaseT(2)=d.h1;
 
@@ -208,6 +218,7 @@ if s2.maxSpeed>c.maxSpeed_closing_mps || s2.minRange<c.KOZ_m || ...
         s2.TOF_s/60<c.closing_min(1) || s2.TOF_s/60>c.closing_min(2)
     why='H2 speed/time/KOZ';return;
 end
+
 trace{3}=s2.trajectory(1:3,:);phaseDV(3)=s2.DV;phaseT(3)=s2.TOF_s/60;
 trace{4}=repmat(hp2(1:3),1,2);phaseDV(4)=d.h2*c.hold2_DVrate_mps_per_min;phaseT(4)=d.h2;
 
@@ -218,6 +229,7 @@ if s3.maxSpeed>c.maxSpeed_controlled_mps || s3.minRange<d.fin || ...
         s3.TOF_s/60<c.controlled_min(1) || s3.TOF_s/60>c.controlled_min(2)
     why='Closing speed/time/range';return;
 end
+
 trace{5}=s3.trajectory(1:3,:);phaseDV(5)=s3.DV;phaseT(5)=s3.TOF_s/60;
 % Baseline's corridor and inward-range tests are commented out. Keep them
 % diagnostic for fair comparison; NOT a safety certification.
@@ -237,6 +249,7 @@ if ~f.feasible || f.maxSpeed_mps>c.maxSpeed_final_mps || ...
         f.peakAcceleration_mps2>c.maxPeakAccel_mps2
     why='Final speed/acceleration';return;
 end
+
 trace{7}=f.trajectory(1:3,:);phaseDV(7)=f.DV_mps;phaseT(7)=f.TOF_min;
 
 r=struct('DV',sum(phaseDV),'TOF_min',sum(phaseT), ...
@@ -273,6 +286,7 @@ dv2=xf(4:6)-traj(4:6,end);
 if norm(traj(1:3,end)-xf(1:3))>1e-5
     why='terminal position';return;
 end
+
 s=struct('DV',norm(dv1)+norm(dv2),'TOF_s',T, ...
     'trajectory',traj,'minRange',min(vecnorm(traj(1:3,:),2,1)), ...
     'maxSpeed',max(vecnorm(traj(4:6,:),2,1)));
@@ -326,6 +340,7 @@ for leg=1:2
                 'DisplayName',out.methods{m},'HandleVisibility',visibility);
         end
     end
+
     A=out.cfg.AZ_m; K=out.cfg.KOZ_m;
     surf(ax,A*sx,A*sy,A*sz,'FaceColor','none','EdgeColor',[.4 .6 1], ...
         'EdgeAlpha',.10,'DisplayName','AZ');

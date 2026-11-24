@@ -30,22 +30,26 @@ D.recovery=struct('enabled',false,'targetState',[], ...
 if strcmpi(vehicle,'assembly')
     D.screen.protectedRadius_m=40;
 end
+
 f=fieldnames(D);
 for k=1:numel(f)
     if ~isfield(cfg,f{k}),cfg.(f{k})=D.(f{k});end
 end
+
 sf=fieldnames(D.screen);
 for k=1:numel(sf)
     if ~isfield(cfg.screen,sf{k})
         cfg.screen.(sf{k})=D.screen.(sf{k});
     end
 end
+
 rf=fieldnames(D.recovery);
 for k=1:numel(rf)
     if ~isfield(cfg.recovery,rf{k})
         cfg.recovery.(rf{k})=D.recovery.(rf{k});
     end
 end
+
 assert(isfinite(cfg.vehicleMass_kg) && cfg.vehicleMass_kg>0, ...
     'Set actual reference safety vehicle mass: cfg.vehicleMass_kg');
 assert(all(cfg.caseWeights>=0) && ...

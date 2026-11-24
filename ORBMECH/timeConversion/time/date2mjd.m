@@ -8,8 +8,8 @@ function mjd = date2mjd(date)
 % DESCRIPTION:
 %   Returns the modified Julian day number corresponding to the Gregorian
 %   calendar date (year, month, day, hour, minute, and second).
-%   Note: The function is valid for the whole range of dates since 12:00 
-%       noon 24 November -4713, Gregorian calendar. (This bound is set in 
+%   Note: The function is valid for the whole range of dates since 12:00
+%       noon 24 November -4713, Gregorian calendar. (This bound is set in
 %       order to have symmetry with the inverse function jd2date)
 %   Note: The inputs must be feasible (i.e. the date must exist!). If an
 %       unfeasible date is inputed, wrong results are given because no
@@ -44,6 +44,5 @@ function mjd = date2mjd(date)
 % -------------------------------------------------------------------------
 
 mjd = date2jd(date) - 2400000.5;
-
 
 return

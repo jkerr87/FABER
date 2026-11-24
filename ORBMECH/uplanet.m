@@ -6,7 +6,7 @@ function  [kep,ksun] = uplanet(mjd2000, ibody)
 %  [kep, ksun] = uplanet (mjd2000, ibody);
 %
 % DESCRIPTION:
-%   Planetary orbital elements are restituited in a Sun-centred ecliptic 
+%   Planetary orbital elements are restituited in a Sun-centred ecliptic
 %   system.
 %   These ephemerides were succesfully compared with JPL/NAIF/SPICE
 %   ephemerides using de405.bps.
@@ -46,7 +46,7 @@ function  [kep,ksun] = uplanet(mjd2000, ibody)
 %
 %  CHANGELOG:
 %   28/12/06, Camilla Colombo: tidied up
-%   10/01/2007, REVISION, Matteo Ceriotti 
+%   10/01/2007, REVISION, Matteo Ceriotti
 %   03/05/2008, Camilla Colombo: Case 11 deleted.
 %   11/09/2008, Matteo Ceriotti, Camilla Colombo:
 %       - All ephemerides shifted 0.5 days back in time. Now mjd2000 used
@@ -76,7 +76,7 @@ kep(1)=T*0;
 %  CLASSICAL PLANETARY ELEMENTS ESTIMATION IN MEAN ECLIPTIC OF DATE
 %
 switch round(ibody)
-    
+
     %
     %  MERCURY
     %
@@ -196,7 +196,7 @@ switch round(ibody)
 %         kep(5) = mod(kep(5), 360);
 %         XM   = 4.77198849108333333e+5    + 9.19166666666666667e-3*T  + 1.43888888888888889e-5*TT;
 %         kep(6) = 2.96104608333333333e2     + XM                    *T;
-    
+
     otherwise
 	disp(ibody)
     if round(ibody)==11
@@ -205,22 +205,22 @@ switch round(ibody)
         error('no planet in the list')
     end
 end
-  
+
 %
 %  CONVERSION OF AU INTO KM, DEG INTO RAD AND DEFINITION OF  XMU
 %
- 
+
 kep(1)   = kep(1)*KM;       % a [km]
 kep(3:6) = kep(3:6)*DEG2RAD;    % Transform from deg to rad
 kep(6)   = mod(kep(6),2*pi);
 % XMU  = (XM*DEG2RAD/(864000*365250))^2*kep(1)^3;
 phi    = kep(6);          % phi is the eccentric anomaly, uses kep(6)=M as a first guess
-     
+
 for i=1:5
-    g       = kep(6)-(phi-kep(2)*sin(phi)); 
+    g       = kep(6)-(phi-kep(2)*sin(phi));
 	g_primo = (-1+kep(2)*cos(phi));
  	phi     = phi-g/g_primo;   % Computes the eccentric anomaly kep
-end 
+end
 
 theta=2*atan(sqrt((1+kep(2))/(1-kep(2)))*tan(phi/2));
 

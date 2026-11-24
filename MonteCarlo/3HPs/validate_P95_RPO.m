@@ -1,4 +1,3 @@
-
 function checks = validate_P95_RPO(R)
 % VALIDATE_P95_RPO
 %
@@ -204,9 +203,11 @@ for vehicle = 1:2
             if ~speedOK
                 fprintf(' [speed]');
             end
+
             if ~zoneOK
                 fprintf(' [KOZ/corridor]');
             end
+
             fprintf('\n');
         end
 

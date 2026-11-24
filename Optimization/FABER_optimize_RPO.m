@@ -15,6 +15,7 @@ if nargin>0 && ~isempty(userCfg)
     f=fieldnames(userCfg);
     for j=1:numel(f), cfg.(f{j})=userCfg.(f{j}); end
 end
+
 assert(exist('fmincon','file')==2,'fmincon requires Optimization Toolbox.');
 assert(numel(cfg.x0)==6,'x0 must have 6 elements.');
 assert(all(diff(cfg.tofCaps_min)>0),'TOF caps must be increasing.');
@@ -54,12 +55,14 @@ for Nh=1:cfg.Nmax
                     warning('Nh=%d Nc=%d cap=%g: %s',Nh,Nc,cap,ME.message);
                     continue;
                 end
+
                 test=evaluate(z,Nh,Nc,n,cfg,idx,cfg.validationSamples,true);
                 if flag<=0 || ~isFeasible(test,cap,cfg),continue;end
                 if isempty(best) || test.dv<best.test.dv
                     best=struct('z',z,'test',test);
                 end
             end
+
             if ~isempty(best)
                 t=best.test;
                 rows(end+1)=struct('Nh',Nh,'Nc',Nc,'TOFcap_min',cap, ...
@@ -75,12 +78,14 @@ for Nh=1:cfg.Nmax
         end
     end
 end
+
 R=struct('cfg',cfg,'solutions',table(),'pareto',table(), ...
     'raw',rows,'bestHomingArcs',table(),'bestClosingArcs',table());
 if isempty(rows)
     warning('No verified designs found; revisit constraints and optimizer starts.');
     return;
 end
+
 S=struct2table(rmfield(rows,'z'));
 mask=paretoMask(S.TOF_min,S.DV_mps);
 P=sortrows(S(mask,:),'TOF_min');
@@ -101,6 +106,7 @@ if cfg.makePlots
     cb=colorbar;ylabel(cb,'Homing + closing arc count');
     legend('Verified candidates','Sampled Pareto','Location','best');
 end
+
 if cfg.saveCSV
     writetable(S,'FABER_joint_RPO_solutions.csv');
     writetable(P,'FABER_joint_RPO_pareto.csv');
@@ -115,12 +121,14 @@ cfg.x0=[50;-2000;20;0.01;0.04;-0.01];
 cfg.hp1_m=[800 1200];cfg.hp2_m=[100 250];
 cfg.finalStandoff_m=5;
 cfg.Nmax=4;cfg.tofCaps_min=[170 210 260];
+
 cfg.homing_min=[30 100];cfg.closing_min=[20 130];
 cfg.hold1_min=30;cfg.hold2_min=10;cfg.final_min=10;
 cfg.minLeg_min=5;cfg.minWaypointGap=0.05;
 cfg.maxSpeed_homing_mps=1.0;cfg.maxSpeed_closing_mps=1.0;
 cfg.maxSpeed_final_mps=1.0;cfg.KOZ_m=30;
 cfg.homingExcursionFactor=1.20;cfg.closingExcursionFactor=1.20;
+
 cfg.maxPeakAccel_mps2=inf;
 cfg.hold1_DVrate_mps_per_min=0;cfg.hold2_DVrate_mps_per_min=0;
 cfg.nStarts=3;cfg.seed=42;cfg.nSamples=21;cfg.validationSamples=201;
@@ -151,6 +159,7 @@ for inds={idx.h,idx.c}
         A(end+1,:)=row;b(end+1,1)=-ng; %#ok<AGROW>
     end
 end
+
 % Phase lower/upper total times
 [A,b]=addSum(A,b,idx.th,cfg.homing_min(2),K,1);
 [A,b]=addSum(A,b,idx.th,cfg.homing_min(1),K,-1);
@@ -159,10 +168,12 @@ end
 [A,b]=addSum(A,b,[idx.th idx.tc], ...
     cap-(cfg.hold1_min+cfg.hold2_min+cfg.final_min),K,1);
 end
+
 function [A,b]=addSum(A,b,inds,val,K,sgn)
 row=zeros(1,K);row(inds)=sgn;
 A(end+1,:)=row;b(end+1,1)=sgn*val;
 end
+
 function z=initialGuess(Nh,Nc,cap,cfg,idx)
 fh=drawFrac(Nh,cfg.minWaypointGap);
 fc=drawFrac(Nc,cfg.minWaypointGap);
@@ -180,20 +191,24 @@ tc=splitTimes(Tc,Nc,cfg.minLeg_min);
 z=[mean(cfg.hp1_m);mean(cfg.hp2_m);fh;fc;th;tc];
 assert(numel(z)==max(idx.tc));
 end
+
 function f=drawFrac(N,gap)
 if N==1,f=zeros(0,1);return;end
 w=rand(N,1);w=w/sum(w);
 steps=gap+(1-N*gap)*w;
 f=cumsum(steps(1:end-1));
 end
+
 function t=splitTimes(T,N,minLeg)
 w=rand(N,1);w=w/sum(w);
 t=minLeg+(T-N*minLeg)*w;
 end
+
 function j=objective(z,Nh,Nc,n,cfg,idx)
 r=evaluate(z,Nh,Nc,n,cfg,idx,cfg.nSamples,false);
 if r.valid,j=r.dv;else,j=1e5;end
 end
+
 function [c,ceq]=nonlinear(z,Nh,Nc,n,cfg,idx)
 r=evaluate(z,Nh,Nc,n,cfg,idx,cfg.nSamples,false);
 if ~r.valid,c=ones(7,1)*1e3;ceq=[];return;end
@@ -201,6 +216,7 @@ accelViolation=-1;
 if isfinite(cfg.maxPeakAccel_mps2)
     accelViolation=r.accF-cfg.maxPeakAccel_mps2;
 end
+
 c=[r.spH-cfg.maxSpeed_homing_mps; ...
    r.spC-cfg.maxSpeed_closing_mps; ...
    r.spF-cfg.maxSpeed_final_mps; ...
@@ -210,6 +226,7 @@ c=[r.spH-cfg.maxSpeed_homing_mps; ...
    accelViolation];
 ceq=[];
 end
+
 function pass=isFeasible(r,cap,cfg)
 pass=r.valid && r.tof<=cap+1e-5 && ...
     r.spH<=cfg.maxSpeed_homing_mps+1e-5 && ...
@@ -222,6 +239,7 @@ pass=r.valid && r.tof<=cap+1e-5 && ...
     r.posError<=cfg.terminalTol_m && ...
     r.velError<=cfg.terminalVelTol_mps;
 end
+
 function r=evaluate(z,Nh,Nc,n,cfg,idx,Nsamples,odeCheck)
 r=struct('valid',false,'dv',inf,'tof',inf, ...
     'hdv',inf,'cdv',inf,'fdv',inf,'spH',inf,'spC',inf,'spF',inf, ...
@@ -260,6 +278,7 @@ r.dv=r.hdv+r.cdv+r.fdv+ ...
 r.tof=sum(z([idx.th idx.tc]))+cfg.hold1_min+cfg.hold2_min+cfg.final_min;
 r.valid=all(isfinite([r.dv r.tof r.spH r.spC r.spF r.minH r.minC]));
 end
+
 function [p,ok]=flyPhase(xStart,xTarget,f,tMinutes,n,Nsamples,odeCheck)
 % Reproduce each fly-through waypoint with a velocity impulse.
 % The only arrival stop occurs at the FINAL holding point.
@@ -288,6 +307,7 @@ for k=1:Tsum
         p.maxR=max(p.maxR,norm(rr));
         p.sp=max(p.sp,norm(vv));
     end
+
     posErr=norm(A*rStart+B*vPlus-rk);
     velErr=0;
     if odeCheck
@@ -301,15 +321,18 @@ for k=1:Tsum
         p.maxR=max(p.maxR,max(vecnorm(X(:,1:3),2,2)));
         p.sp=max(p.sp,max(vecnorm(X(:,4:6),2,2)));
     end
+
     p.pe=max(p.pe,posErr);
     p.ve=max(p.ve,velErr);
     rStart=rk;
     vBefore=vMinus; % fly through: do NOT brake here
 end
+
 % Braking impulse exists ONLY at the designated final holding point.
 p.dv=p.dv+norm(xTarget(4:6)-vBefore);
 ok=all(isfinite([p.dv p.sp p.minR p.maxR p.pe p.ve]));
 end
+
 function [dv,sp,acc]=finalQuintic(hp2,standoff,T,n,N)
 t=linspace(0,T,N);s=t/T;
 p=10*s.^3-15*s.^4+6*s.^5;
@@ -322,6 +345,7 @@ ux=-2*n*vy;uy=ay;
 accmag=sqrt(ux.^2+uy.^2);
 dv=trapz(t,accmag);sp=max(abs(vy));acc=max(accmag);
 end
+
 function [A,B,C,D]=phi(n,T)
 nt=n*T;c=cos(nt);s=sin(nt);
 A=[4-3*c,0,0;6*(s-nt),1,0;0,0,c];
@@ -329,12 +353,14 @@ B=[s,2*(1-c),0;2*(c-1),4*s-3*nt,0;0,0,s]/n;
 C=[3*n*s,0,0;6*n*(c-1),0,0;0,0,-n*s];
 D=[c,2*s,0;-2*s,4*c-3,0;0,0,c];
 end
+
 function mask=paretoMask(t,d)
 [~,o]=sortrows([t(:) d(:)],[1 2]);mask=false(numel(t),1);best=inf;
 for k=1:numel(o)
     i=o(k);if d(i)<best-1e-9,mask(i)=true;best=d(i);end
 end
 end
+
 function [H,C]=arcTables(z,Nh,Nc,n,cfg)
 p=3;fh=[z(p:p+Nh-2);1];p=p+Nh-1;
 fc=[z(p:p+Nc-2);1];p=p+Nc-1;
@@ -342,6 +368,7 @@ th=z(p:p+Nh-1);p=p+Nh;tc=z(p:p+Nc-1);
 H=makeTable(cfg.x0(:),[0;-z(1);0;0;0;0],fh,th,n,'Homing');
 C=makeTable([0;-z(1);0;0;0;0],[0;-z(2);0;0;0;0],fc,tc,n,'Closing');
 end
+
 function T=makeTable(x0,xtarget,frac,times,n,label)
 % BurnStart at each arc start is the velocity correction needed to
 % continue the sequence. BurnEnd is zero except at the final hold.
@@ -353,6 +380,7 @@ for k=1:N
     if rcond(B)<1e-10
         error('Cannot export near-singular HCW arc %d',k);
     end
+
     vPlus=B\(rEnd-A*rStart);
     burnStart=vPlus-vBefore;
     vMinus=C*rStart+D*vPlus;
@@ -360,10 +388,12 @@ for k=1:N
     if k==N
         burnEnd=xtarget(4:6)-vMinus;
     end
+
     dat(k,:)=[k rStart' rEnd' times(k) burnStart' burnEnd' vMinus'];
     rStart=rEnd;
     vBefore=vMinus;
 end
+
 T=array2table(dat,'VariableNames',{'Arc','Xstart_m','Ystart_m','Zstart_m', ...
     'Xend_m','Yend_m','Zend_m','TOF_min','BurnStartX_mps', ...
     'BurnStartY_mps','BurnStartZ_mps','BurnEndX_mps','BurnEndY_mps', ...

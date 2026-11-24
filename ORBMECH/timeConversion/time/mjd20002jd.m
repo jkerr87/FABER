@@ -7,7 +7,7 @@ function jd = mjd20002jd(mjd2000)
 %
 % INPUT
 %	mjd2000     Date in MJD 2000. MJD2000 is defined as the number of days
-%               since 01-01-2000, 12:00 noon. 
+%               since 01-01-2000, 12:00 noon.
 %
 % OUTPUT
 %   jd          Date in Julian Day. The JD (Julian day) count is from 0 at
@@ -25,9 +25,7 @@ function jd = mjd20002jd(mjd2000)
 %
 % ------------------------- - SpaceART Toolbox - --------------------------
 
-
 mjd = mjd2000 + 51544.5;
 jd  = mjd + 2400000.5;
-
 
 return

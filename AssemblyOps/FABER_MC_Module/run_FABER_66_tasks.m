@@ -25,6 +25,7 @@ for k = 1:numel(files)
     assert(isfile(fullfile(folder,files{k})), ...
         'Missing required CSV: %s',files{k});
 end
+
 opts = detectImportOptions(fullfile(folder,files{1}),'TextType','string');
 opts = setvartype(opts,'id','string');
 O = readtable(fullfile(folder,files{1}),opts);
@@ -58,6 +59,7 @@ activeAt = cell(height(O),1);
 for e = 1:height(E)
     activeAt{detectionIdx(e)}(end+1) = e;
 end
+
 nOpportunity = accumarray(faultIdx,1,[height(F),1]);
 recoverySeconds = A.(sprintf('%s_s',recoveryCase));
 recoverySeconds = recoverySeconds(auditIdx);
@@ -104,6 +106,7 @@ for q = 1:numel(scenarios)
                 if string(containerMode)=="once" && attempts>1 && oi==openIdx
                     continue
                 end
+
                 elapsed = elapsed + nominalOperation(oi);
                 eventIndices = activeAt{oi};
                 for e = eventIndices
@@ -112,9 +115,11 @@ for q = 1:numel(scenarios)
                     if r==16 || r==17
                         continue
                     end
+
                     if rand >= pEvent(e)
                         continue
                     end
+
                     if r==18
                         % Count already performed operations, then replace element.
                         moduleLost = true;
@@ -122,6 +127,7 @@ for q = 1:numel(scenarios)
                         elapsed = elapsed + restartAfterLoss_s;
                         break
                     end
+
                     extra = recoverySeconds(r);
                     % REC-10 at 7.03 excludes future contact/engagement tasks.
                     if r==10 && O.id(oi)=="7.03"
@@ -131,14 +137,17 @@ for q = 1:numel(scenarios)
                             extra = min(extra,35);
                         end
                     end
+
                     elapsed = elapsed + extra;
                     delaySeconds(s) = delaySeconds(s) + extra;
                     eventDelays(s,r) = eventDelays(s,r) + extra;
                 end
+
                 if moduleLost
                     break
                 end
             end
+
             if ~moduleLost
                 installed = installed + 1;
                 % Attribute all work since the previous successful installation
@@ -147,6 +156,7 @@ for q = 1:numel(scenarios)
                 lastInstalled_s = elapsed;
             end
         end
+
         completed(s) = (installed==nTarget);
         campaignHours(s) = elapsed / 3600;
         totalAttempts(s) = attempts;

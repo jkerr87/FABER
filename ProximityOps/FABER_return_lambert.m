@@ -5,6 +5,7 @@ reason = "Capture dwell is unspecified";
 if isnan(cfg.captureWait_min)
     return;
 end
+
 reason = "No Lambert arc passed the return perigee and endpoint checks";
 n = sqrt(mu/(Re+cfg.h_target_km)^3);
 captureEpoch_s = outbound.arrivalEpoch_s+client.elapsed_s;
@@ -13,17 +14,22 @@ if isfield(outbound,'truthCoast')
 else
     coastTruth = @(x,dt) circularCoast(mu,x,dt);
 end
+
+% Advance the module to the capture epoch before converting the Taxi terminal state.
 module = coastTruth(outbound.moduleArrivalECI,client.elapsed_s);
 taxi = FABER_relative_state(module,client.terminalLVLH,'lvlhToEci');
 % Use the position and momentum of the combined center of mass.
 payloadFraction = cfg.payloadMass_kg/massCaptured_kg;
 stackAtCapture = taxi + payloadFraction*(module-taxi);
+
+% Propagate the captured stack and Atlante to the same departure epoch.
 dwell_s = 60*cfg.captureWait_min;
 if isfield(outbound,'truthCoast')
     stackAtDeparture = coastTruth(stackAtCapture,dwell_s);
 else
     stackAtDeparture = coast(mu,stackAtCapture,dwell_s);
 end
+
 departureEpoch_s = captureEpoch_s+dwell_s;
 atlanteAtDeparture = coastTruth(outbound.atlanteDepartureECI, ...
     departureEpoch_s-outbound.departureEpoch_s);
@@ -31,21 +37,26 @@ revolutions = cfg.returnLambertRevolutions;
 if isempty(revolutions)
     revolutions = cfg.phasingRevs;
 end
+
+% Evaluate Atlante at the arrival epoch for each candidate duration.
 times = cfg.returnLambertTOF_s;
 if isfield(outbound,'planEphemeris')
     if isempty(times)
         times = (2*pi/n)*(revolutions+(0.15:0.05:0.85));
     end
+
     target = outbound.planEphemeris(atlanteAtDeparture,max(times));
 else
     target = @(dt) circularCoast(mu,atlanteAtDeparture,dt);
 end
+
 transfer = FABER_lambert_handoff(mu,Re,stackAtDeparture,target,cfg.x0_atlante, ...
     departureEpoch_s,2*pi/n,revolutions,times, ...
     cfg.outboundMinimumPerigee_km);
 if isempty(transfer)
     return;
 end
+
 transfer.captureEpoch_s = captureEpoch_s;
 transfer.captureDwell_s = dwell_s;
 transfer.captureTaxiLVLH = client.terminalLVLH;

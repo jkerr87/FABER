@@ -1,4 +1,3 @@
-
 %% FABER NINE-PHASE RPO MONTE CARLO
 % Phase-specific propulsion / legacy / unconstrained comparison
 % Discrete Pareto compromise: Delta-V vs TOF
@@ -118,7 +117,6 @@ fprintf('Trials: %d\n',cfg.N);
 
 R = FABER_RPO_9phase_MC(cfg);
 
-
 %% =========================================================
 % INITIAL TAXI DEPARTURE FROM ATLANTE
 % Separate from the nominal RPO retrieval-cycle budget
@@ -169,7 +167,6 @@ if cfg.departure.enabled
     grid on;
 
 end
-
 
 %% =========================================================
 % 3. FEASIBILITY
@@ -387,34 +384,33 @@ if ~strcmpi(cfg.finiteThrustValidation,'none')
     fprintf('Tested: %d\n',V.attemptedCount);
     fprintf('Passed: %d\n',V.passedCount);
 
-
 %% FINITE-THRUST PLOTS FOR ALL TESTED ARCHITECTURES
 
 % if V.attemptedCount > 0
-% 
+%
 %     M = size(R.valid,2);
-% 
+%
 %     fprintf('\nGENERATING FINITE-THRUST PLOTS\n');
-% 
+%
 %     for m = 1:M
-% 
+%
 %         % Find a passing finite-thrust candidate
 %         i = find(V.passed(:,m),1,'first');
-% 
+%
 %         if isempty(i)
 %             fprintf('Architecture %d: no passing candidate.\n',m);
 %             continue;
 %         end
-% 
+%
 %         fprintf('Plotting trial %d, architecture %d\n',i,m);
-% 
+%
 %         % Generate plot in MATLAB only
 %         plot_FABER_RPO_finite(R,V,i,m);
-% 
+%
 %     end
-% 
+%
 % end
-% 
+%
 end
 
 %% =========================================================
@@ -440,7 +436,6 @@ if runShellSensitivity
         nnz(any(R_shell.valid,2)),shellCfg.N);
 
 end
-
 
 %% PLOT PREFERRED PARETO ARCHITECTURE
 
@@ -469,8 +464,6 @@ else
         'available for the preferred architecture.']);
 
 end
-
-
 
 %% ================================================================
 % 10. RPO TRAJECTORY GEOMETRY - REPORT FIGURES
@@ -670,7 +663,6 @@ exportgraphics(fig1, ...
     fullfile(cfg.outputFolder,'RPO_full_trajectory.pdf'), ...
     'ContentType','vector');
 
-
 %% ================================================================
 % FIGURE 2 - CLOSE-RANGE APPROACH
 % ================================================================
@@ -786,7 +778,6 @@ exportgraphics(fig2, ...
     fullfile(cfg.outputFolder,'RPO_close_range.pdf'), ...
     'ContentType','vector');
 
-
 %% ================================================================
 % PLOT INFORMATION
 % ================================================================
@@ -801,7 +792,6 @@ fprintf('Cycle Delta-V: %.4f m/s\n', ...
     R.CycleDV_mps(iPlot,mPlot));
 
 fprintf('Figures saved in:\n%s\n',cfg.outputFolder);
-
 
 %% =========================================================
 % 11. EXPORT
@@ -834,4 +824,3 @@ save(fullfile(cfg.outputFolder,'RPO_results.mat'), ...
 fprintf('\n=======================================\n');
 fprintf('FABER RPO ANALYSIS COMPLETE\n');
 fprintf('=======================================\n');
-

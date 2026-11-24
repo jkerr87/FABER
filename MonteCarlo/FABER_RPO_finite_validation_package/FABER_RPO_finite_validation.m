@@ -18,6 +18,7 @@ cfg = R.cfg;
 if nargin < 2 || isempty(mode)
     mode = cfg.finiteThrustValidation;
 end
+
 mode = lower(string(mode));
 [N,M] = size(R.valid);
 V = struct();
@@ -31,6 +32,7 @@ if mode == "none"
     V.table = table();
     return;
 end
+
 assert(ismember(mode,["selected","pareto","all"]), ...
     'Mode must be none, selected, pareto, or all.');
 
@@ -48,6 +50,7 @@ switch mode
                 mask(i,m)=true;
             end
         end
+
         % Ensure minimum DV/TOF, each architecture's P95 DV sample,
         % and maximum phase burn-fraction sample also represented.
         for m=1:M
@@ -60,7 +63,6 @@ switch mode
             [~,a]=max(R.MaxPhaseBurnFraction(ids,m)); mask(ids(a),m)=true;
         end
 end
-
 
 %% STRATIFIED FINITE-THRUST CANDIDATE SELECTION
 % Spread validation across maneuver architectures.
@@ -136,7 +138,6 @@ else
 
 end
 
-
 rows = cell(0,11);
 for q=1:numel(ii)
     i=ii(q); m=mm(q);
@@ -163,17 +164,18 @@ for q=1:numel(ii)
         else
             approach=rec.ATLANTE;
         end
+
         for k=1:5
 
             z = approach.transferDetails{k};
-            
+
             % Map five transfer legs to nine-phase indices
             phaseNumber = 2*k-1;
-            
+
             % Select main or RCS propulsion for this phase
             phaseCfg = FABER_RPO_phase_propulsion( ...
                 cfg,phaseNumber);
-            
+
             % Propagate with the correct propulsion system
             [P,fail] = validateLeg(z,phaseCfg,mass,k);
 
@@ -187,17 +189,21 @@ for q=1:numel(ii)
                 maxSpeed=max(maxSpeed,P.maxSpeed_mps);
                 maxClosing=max(maxClosing,P.maxClosing_mps);
             end
+
             if strlength(fail)>0
                 why=sprintf('leg%d_phase%d_%s',leg,2*k-1,fail);
                 ok=false;
                 break;
             end
         end
+
         if ~ok, break; end
     end
+
     if totalProp > cfg.maxPropellantCycle_kg
         ok=false; why="finite_cycle_propellant_limit";
     end
+
     V.passed(i,m)=ok;
     V.failureReason(i,m)=why;
     V.details{i,m}=candidateDetails;
@@ -227,6 +233,7 @@ for i=1:N
         V.finitePareto(i,m)=~any(dominates);
     end
 end
+
 fprintf('\nFINITE-THRUST VALIDATION: %s\n',mode);
 fprintf('Analytically feasible: %d | validated: %d | passed: %d\n', ...
     V.nominalValidCount,V.attemptedCount,V.passedCount);
@@ -256,6 +263,7 @@ if z.isImpulsive
     if (t1+t2)>T+1e-7
         fail="burns_exceed_transfer"; return;
     end
+
     segments={ [0,t1],F1;[t1,T-t2],zeros(3,1);[T-t2,T],F2 };
     x=xinit;
     for k=1:3
@@ -267,11 +275,13 @@ if z.isImpulsive
         if ~isempty(timeline)
             t=t(2:end); Y=Y(2:end,:);
         end
+
         timeline=[timeline;t]; %#ok<AGROW>
         states=[states;Y]; %#ok<AGROW>
         thrust=[thrust;repmat(force(:)',numel(t),1)]; %#ok<AGROW>
         x=Y(end,:)';
     end
+
     totalBurn=t1+t2;
 else
     % Exact commanded continuous feedforward u(t) in LVLH.
@@ -291,8 +301,10 @@ else
             end
         end
     end
+
     totalBurn=trapz(timeline,double(vecnorm(thrust,2,2)>1e-9));
 end
+
 if isempty(states), fail="empty_propagation"; return; end
 massFinal=states(end,7);
 r=states(:,1:3); v=states(:,4:6);
@@ -310,6 +322,7 @@ if phase==3 || phase==4
 else
     observed=maxSpeed;
 end
+
 if observed>maxAllowed(phase)+1e-7, fail="finite_speed"; end
 
 % Zone safety on FULL finite-thrust path including burn arcs.
@@ -325,6 +338,7 @@ switch phase
     case 5
         if any(rho>cfg.KOZ_m+tol), fail="KOZ_reexit"; end
 end
+
 if phase>=4 && any(rho<cfg.final_m(1)-tol)
     fail="target_passage";
 end
@@ -338,6 +352,7 @@ else
     posTol=cfg.finitePosTolerance_m;
     velTol=cfg.finiteVelTolerance_mps;
 end
+
 if posErr>posTol, fail="finite_position_error"; end
 if velErr>velTol, fail="finite_velocity_error"; end
 
@@ -359,6 +374,7 @@ else
     accel=desiredAccel(t);
     Fmag=m*norm(accel);
 end
+
 free=[3*n^2*r(1)+2*n*v(2);-2*n*v(1);-n^2*r(3)];
 dy=[v;free+accel;-Fmag/ve];
 end
@@ -391,6 +407,7 @@ if isempty(cfg.thrusterDirections_LVLH)
     F=cfg.thrust_N*cfg.nActiveThrusters*cfg.thrustEfficiency;
     return;
 end
+
 d=direction(:)/norm(direction);
 U=cfg.thrusterDirections_LVLH;
 U=U./vecnorm(U,2,1);

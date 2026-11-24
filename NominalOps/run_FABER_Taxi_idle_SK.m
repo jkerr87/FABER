@@ -61,6 +61,7 @@ for j = 1:numel(tLocal)
     E = expm(augmented*tLocal(j));
     errorPosition(:,j) = E(1:3,4:6)*dv1 + E(1:3,7:9)*a;
 end
+
 maxError = max(vecnorm(errorPosition));
 strategy = ["Vbar";"orbit"];
 minRange = zeros(2,1);
@@ -74,6 +75,7 @@ if isfinite(opts.AZ_m)
     violations(1) = nCycles*nnz(rho<opts.AZ_m+opts.AZmargin_m);
     violations(2) = 0;
 end
+
 minRange(2) = Inf;
 for k = 1:nCycles
     t = (k-1)*T+tLocal;
@@ -86,6 +88,7 @@ for k = 1:nCycles
         violations(2) = violations(2)+nnz(rho<opts.AZ_m+opts.AZmargin_m);
     end
 end
+
 SK.summary = table(strategy,repmat(dv,2,1),repmat(propellant,2,1), ...
     minRange,maxRange,repmat(maxError,2,1),violations,'VariableNames', ...
     {'Architecture','SK_DV_mps','Propellant_kg','MinRange_m','MaxRange_m', ...

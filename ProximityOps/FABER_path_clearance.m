@@ -5,9 +5,11 @@ if isempty(fieldnames(geometry))
     clearance_m = Inf;
     return;
 end
+
 if ~isfield(geometry,'extraRadius_m')
     geometry.extraRadius_m = 0;
 end
+
 validateattributes(geometry.extraRadius_m,{'numeric'}, ...
     {'scalar','real','finite','nonnegative'});
 clearance_m = Inf;

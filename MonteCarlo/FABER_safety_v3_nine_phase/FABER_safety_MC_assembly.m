@@ -32,10 +32,12 @@ for i=1:A.Nmodules
                 ~isempty(cfg.trussInstallModule_i)
             use=cfg.trussInstallModule_i(:)<=i;
         end
+
         segA=cfg.hazards.segmentsA_m(use,:);
         segB=cfg.hazards.segmentsB_m(use,:);
         segR=cfg.hazards.segmentRadii_m(use);
     end
+
     legs={rec.outbound,rec.returnTrip};
     for leg=1:2
         a=legs{leg};
@@ -44,6 +46,7 @@ for i=1:A.Nmodules
         else
             legName='return unloaded';m=mass;
         end
+
         Xhcw=a.transferPath;
         if size(Xhcw,1)==6
             events(end+1)=makeEvent([a.exitGate_m;zeros(3,1)], ...
@@ -83,6 +86,7 @@ R.warning=['Simplified sphere/capsule obstacles and ideal nominal paths. ', ...
     'no verified docking authorization, vehicle swept volumes, ', ...
     'or proven 24 h holding state.'];
 end
+
 function e=makeEvent(x,dv,p,v,i,centers,m,segA,segB,segR)
 e=struct('xPre',x,'dvNom',dv,'phase',p,'vehicle',v, ...
     'index',i,'hazardsCenters_m',centers,'mass_kg',m, ...

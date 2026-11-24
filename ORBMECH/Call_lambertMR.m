@@ -33,7 +33,6 @@ clearvars;
 %  - Ncase = 0: Not used for the zero-revolution case
 %  - optionsLMR = 0: No display
 
-
 muSun = 0.39860e6;      % Sun's gravitational parameter [km^3/s^2];
 ToF = 50*86400;         % Time in [s];
 r1 = [10000,0,0];       % Initial position vector [km]

@@ -25,8 +25,10 @@ else
     for q=1:numel(fields)
         defaults.(fields{q}) = cfg.(fields{q});
     end
+
     cfg = defaults;
 end
+
 validateConfig(cfg);
 if cfg.saveCSV && ~exist(cfg.outputFolder,'dir')
     mkdir(cfg.outputFolder);
@@ -40,6 +42,7 @@ Deadband_m = zeros(nCases,1);
 DeltaV_mps = zeros(nCases,1);
 Corrections = zeros(nCases,1);
 MaxError_m = zeros(nCases,1);
+
 MinRange_m = zeros(nCases,1);
 MaxRange_m = zeros(nCases,1);
 MaxRelSpeed_mps = zeros(nCases,1);
@@ -80,9 +83,11 @@ disp(out.summaryTable);
 if any(SafetyViolation)
     warning('At least one case violates the illustrative minimum range.');
 end
+
 if cfg.saveCSV
     writetable(out.summaryTable,fullfile(cfg.outputFolder,sprintf('%s_%s_SK_summary.csv',cfg.vehicleName,cfg.architecture)));
 end
+
 if cfg.makePlots
     figure('Color','w','Name','Formation keeping: station-keeping Delta V');
     hold on; grid on;
@@ -91,6 +96,7 @@ if cfg.makePlots
         plot(Distance_m(mask),DeltaV_mps(mask),'-o','LineWidth',1.4, ...
             'DisplayName',sprintf('Deadband %.0f m',cfg.deadbands_m(j)));
     end
+
     xlabel('Big Boy nominal -V-bar distance [m]');
     ylabel('Estimated station-keeping Delta V [m/s]');
     title(sprintf('%s / %s / %.0f days / drag + J2',cfg.vehicleName,cfg.architecture,cfg.missionDays));
@@ -109,6 +115,7 @@ cfg.J2 = 1.08262668e-3;
 cfg.omegaEarth_rads = 7.2921159e-5;
 cfg.hostAltitude_m = 457250;   % change for other FABER orbit cases
 cfg.inclination_deg = 40;
+
 cfg.distances_m = [100 250 500 1000];
 cfg.deadbands_m = [5 10 25];
 cfg.missionDays = 365;            % short shakedown; test 30/90 later
@@ -116,6 +123,7 @@ cfg.step_s = 60;                % fixed-step RK4; test convergence
 cfg.recordEvery_s = 3600;
 cfg.hostMass_kg = 1000;        % PLACEHOLDER
 cfg.hostCd = 2.2;              % PLACEHOLDER
+
 cfg.hostArea_m2 = 8;           % PLACEHOLDER
 cfg.bigBoyMass_kg = 250;       % PLACEHOLDER
 cfg.bigBoyCd = 2.2;            % PLACEHOLDER
@@ -123,6 +131,7 @@ cfg.bigBoyArea_m2 = 2;         % PLACEHOLDER
 cfg.rhoRef_kgm3 = 1e-12;       % PLACEHOLDER; not a forecast
 cfg.rhoRefAltitude_m = 457250;
 cfg.scaleHeight_m = 60000;     % PLACEHOLDER, local approximation
+
 cfg.useJ2 = true;
 cfg.useDrag = true;
 cfg.velocityDeadband_mps = 0.02; % PLACEHOLDER
@@ -130,6 +139,7 @@ cfg.correctionTime_s = 1800;   % nominal time to reduce position error
 cfg.maxImpulse_mps = 0.10;     % per command; PLACEHOLDER
 cfg.minSafeRange_m = 50;       % PLACEHOLDER, not a certified KOZ
 cfg.thrust_N = 0.1;            % PLACEHOLDER, for firing-time estimate
+
 cfg.outputFolder = 'FABER_annual_SK_results';
 cfg.architecture = 'Vbar'; % Vbar or orbit
 cfg.orbitRadialAmplitude_m = 20; % HCW reference ellipse, not validated
@@ -150,6 +160,7 @@ for i=1:numel(positiveFields)
     assert(isscalar(q) && isfinite(q) && q>0, ...
         '%s must be finite and positive.',positiveFields{i});
 end
+
 assert(all(isfinite(c.distances_m)) && all(c.distances_m>0));
 assert(all(isfinite(c.deadbands_m)) && all(c.deadbands_m>0));
 assert(all(c.distances_m>c.minSafeRange_m), ...
@@ -182,6 +193,7 @@ t = 0;
 nextRecord = 0;
 logs = zeros(0,6); % [time, x,y,z, position error, relative speed]
 burnTimes = zeros(0,1);
+
 burnDV = zeros(0,1);
 totalDV = 0;
 maxError = 0;
@@ -223,6 +235,7 @@ for it=0:numSteps
         if norm(dvRTN) > cfg.maxImpulse_mps
             dvRTN = dvRTN*cfg.maxImpulse_mps/norm(dvRTN);
         end
+
         [C,~] = frameRTN(Y(1:3),Y(4:6));
         Y(10:12) = Y(10:12) + C*dvRTN;
         thisDV = norm(dvRTN);
@@ -245,6 +258,7 @@ sim.deadband_m = deadband_m;
 sim.totalDV_mps = totalDV;
 sim.maxPositionError_m = maxError;
 sim.minRange_m = minRange;
+
 sim.maxRange_m = maxRange;
 sim.maxRelativeSpeed_mps = maxSpeed;
 sim.safetyViolation = safetyViolation;
@@ -276,6 +290,7 @@ if cfg.useJ2
     fac = 1.5*cfg.J2*mu*cfg.Re_m^2/rmag^5;
     a = a + fac*[r(1)*(5*z2-1); r(2)*(5*z2-1); r(3)*(5*z2-3)];
 end
+
 if cfg.useDrag
     alt=rmag-cfg.Re_m;
     rho=cfg.rhoRef_kgm3*exp(-(alt-cfg.rhoRefAltitude_m)/cfg.scaleHeight_m);

@@ -1,4 +1,3 @@
-
 function pcfg = FABER_RPO_phase_propulsion(cfg,phaseNumber)
 % FABER_RPO_PHASE_PROPULSION
 %

@@ -31,6 +31,7 @@ e.J2=1.08262668e-3;
 e.useJ2=true;
 e.useDrag=true;
 e.useSRP=false;
+
 e.rhoRef_kgm3=1e-12; % USER MUST SELECT altitude/solar-activity case
 e.rhoRefAlt_m=680120;
 e.scaleHeight_m=60000; % simplified exponential density
@@ -61,6 +62,7 @@ if e.useJ2
     f=1.5*e.J2*e.mu_m3s2*e.Re_m^2/rm^5;
     a=a+f*[r(1)*(5*z2r2-1);r(2)*(5*z2r2-1);r(3)*(5*z2r2-3)];
 end
+
 p=e.(char(which));
 if e.useDrag
     h=rm-e.Re_m;
@@ -70,8 +72,10 @@ if e.useDrag
     else
         vrel=v;
     end
+
     a=a-0.5*rho*p.Cd*p.area_m2/p.mass_kg*norm(vrel)*vrel;
 end
+
 if e.useSRP
     sun=e.sunUnitECI(:)/norm(e.sunUnitECI);
     a=a-e.srpPressure_Nm2*p.Cr*p.area_m2/p.mass_kg*sun;

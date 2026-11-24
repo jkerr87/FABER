@@ -9,6 +9,7 @@ if isempty(events)
     error(['Taxi MC contains no recorded burn events. ', ...
         'Run instrumented FABER_RPO_9phase_MC with cfg.safetySaveBurns=true.']);
 end
+
 R=FABER_safety_MC_core(events,cfg);
 R.label='Taxi RPO impulsive-burn execution screening';
 end

@@ -19,6 +19,7 @@ if nargin>=4 && ~isempty(chiefAccel)
     validateattributes(chiefAccel,{'numeric'},{'real','finite','numel',3});
     omega(1) = norm(r)*dot(chiefAccel(:),normal)/norm(h);
 end
+
 switch validatestring(direction,{'eciToLvlh','lvlhToEci'})
     case 'eciToLvlh'
         rho = basis'*(vehicle(1:3)-r);

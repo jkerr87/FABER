@@ -1,4 +1,3 @@
-
 function sk = station_keeping(mass_kg, rho, area_m2, Cd, ...
                               altitude_km, lifetime_years)
 % Preliminary orbital drag-compensation Delta-V.

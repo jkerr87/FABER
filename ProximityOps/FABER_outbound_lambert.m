@@ -13,6 +13,7 @@ rev = cfg.outboundLambertRevolutions;
 if isempty(rev)
     rev = cfg.phasingRevs;
 end
+
 moduleAtTime = @(dt) 1000*circularState(mu,rModule, ...
     cfg.i_target_deg+cfg.moduleInclinationOffset_deg,raan+cfg.moduleRAANOffset_deg, ...
     u0+cfg.phaseAngle_deg+rad2deg(nModule*dt));
@@ -23,6 +24,7 @@ if isempty(transfer)
     error('FABER:OutboundLambertNoSolution', ...
         'No outbound Lambert arc passed the perigee and endpoint checks. Adjust duration, revolutions or geometry.');
 end
+
 transfer.moduleArrivalECI = transfer.referenceArrivalECI;
 transfer.moduleDepartureECI = moduleAtTime(0);
 transfer.atlanteDepartureECI = 1000*atlante;

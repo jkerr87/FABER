@@ -1,4 +1,5 @@
 function out = MA_vehicle_budget_phaseA(cfg)
+% Build the per-event maneuver ledger and report stationkeeping over the configured exposure.
 root = fileparts(mfilename('fullpath'));
 addpath(genpath(root));
 addpath(fullfile(root,'MonteCarlo','FABER_safety_v3_nine_phase'),'-begin');
@@ -10,6 +11,7 @@ else
         defaults.taxiParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
         defaults.atlanteParkingEllipse.ellipseRadialAmplitude_m = cfg.orbitRadialAmplitude_m;
     end
+
     for name = {'taxiParkingEllipse','atlanteParkingEllipse'}
         field = name{1};
         if isfield(cfg,field)
@@ -17,18 +19,23 @@ else
             for k = 1:numel(values)
                 defaults.(field).(values{k}) = cfg.(field).(values{k});
             end
+
             cfg = rmfield(cfg,field);
         end
     end
+
     fields = fieldnames(cfg);
     for k = 1:numel(fields)
         defaults.(fields{k}) = cfg.(fields{k});
     end
+
     if ~isfield(cfg,'taxiParkingYears')
         defaults.taxiParkingYears = defaults.missionYears;
     end
+
     cfg = defaults;
 end
+
 if exist('astroConstants','file') == 2
     mu = astroConstants(13);
     Re = astroConstants(23);
@@ -36,6 +43,7 @@ else
     mu = 398600.4418;
     Re = 6378.1363;
 end
+
 r0 = Re + cfg.h_target_km;
 assert(exist('truss_platform','file') ~= 0, ...
     'Missing truss_platform.m');
@@ -43,6 +51,8 @@ run(which('truss_platform'));
 Nreloc = size(modulePoints,1);
 timesMin = [5 10 15 20 25 30 35 40 45 50];
 hostPoint = [0;-250;0];
+
+% Assemble individual maneuvers before applying grouped event margins.
 rows = cell(0,12);
 [dva,dvb,tinj] = hohmann(mu, ...
     r0 + cfg.launchAltError_km,r0);
@@ -107,6 +117,7 @@ for vehicle = {'Taxi','ATLANTE'}
         'RAAN reserve','Baseline',1,0,0, ...
         'Allocated','PM3 RAAN reserve per inter-client transfer',true);
 end
+
 % Use the same module orbit for both RPO and Lambert targeting.
 hModule = cfg.h_target_km + cfg.moduleAltitudeOffset_km;
 iModule = cfg.i_target_deg + cfg.moduleInclinationOffset_deg;
@@ -124,6 +135,7 @@ rows = add(rows,'Taxi','Outbound far', ...
     norm(outbound.arrivalBurn_mps),0, ...
     'Estimated','Inertial velocity match at the RPO gate',true);
 
+% Initialize paired RPO from the propagated outbound gate state.
 mcCfg = FABER_phaseA_rpo_config(cfg,mu,Re,outbound);
 RPO_MC = FABER_RPO_9phase_MC(mcCfg);
 phases = RPO_MC.phaseNames;
@@ -155,6 +167,7 @@ else
         clientStatus = 'Outbound-only MC P95-DV representative';
     end
 end
+
 DV_client_phase = phaseDV(1,:);
 DV_atlante_phase = phaseDV(2,:);
 TOF_client_phase = phaseTOF(1,:);
@@ -167,12 +180,15 @@ for k = 1:numel(phases)
         1,DV_atlante_phase(k),TOF_atlante_phase(k), ...
         status,'Same paired cycle as outbound',true);
 end
+
+% Keep return costs open until a complete pair has been selected.
 returnTOF_min = NaN;
 returnDV = [NaN NaN];
 if ~isempty(returnTransfer)
     returnTOF_min = returnTransfer.transferTime_s/60;
     returnDV = [norm(returnTransfer.departureBurn_mps),norm(returnTransfer.arrivalBurn_mps)];
 end
+
 rows = add(rows,'Taxi','Inbound far', ...
     'Lambert departure burn','Baseline',1, ...
     returnDV(1),returnTOF_min,status,'Captured stack after dwell',true);
@@ -266,6 +282,7 @@ for j = 1:2
     if j == 2
         indices = [];
     end
+
     count = numel(indices);
     unresolved = nnz(~isfinite(A.DV_perModule(indices)));
 
@@ -313,11 +330,13 @@ for j = 1:2
             NaN,NaN,'Open','Rango rides Kiki for orbital transfers',true);
         continue;
     end
+
     if unresolved > 0
         relocationStatus = 'Open';
     else
         relocationStatus = 'Calculated';
     end
+
     rows = add(rows,vehicles{j},'Assembly', ...
         'Loaded relocation','Baseline',1, ...
         dvOut/count,tofOut/count,relocationStatus, ...
@@ -382,6 +401,7 @@ relativeDensity = cfg.relativeSKDensity_kgm3;
 if isnan(relativeDensity)
     relativeDensity = 9.158e-12*exp(-(cfg.h_target_km-350)/53.298);
 end
+
 relativeOptions = struct('altitude_m',1000*cfg.h_target_km, ...
     'rho_kgm3',relativeDensity,'correctionInterval_hr',cfg.relativeSKInterval_hr, ...
     'AZmargin_m',cfg.relativeSKAZmargin_m);
@@ -415,9 +435,11 @@ for j = 1:numel(vehicleNames)
         relativeOptions.AZ_m = cfg.atlanteParkingAZ_m;
         referenceName = 'host structure';
     end
+
     if isnan(ellipse.ellipseCenter_m)
         ellipse.ellipseCenter_m = distance;
     end
+
     parking = ellipse;
     parking.mass_kg = mass;
     parking.area_m2 = area;
@@ -434,6 +456,7 @@ for j = 1:numel(vehicleNames)
         azViolations = relativeSK.(veh).summary.AZViolationSteps;
         relativeStatus = 'Estimated';
     end
+
     occupancyYears = occupancyMin/(365.25*24*60);
     DVrelative = relAnnual*occupancyYears;
     rows = add(rows,veh,'Relative stationkeeping', ...
@@ -451,18 +474,16 @@ for j = 1:numel(vehicleNames)
             architecture = 'orbit';
 
         end
+
         label = [veh ' ' architecture];
-       % Regular orbital stationkeeping
-% Include once per vehicle, independent of parking strategy
 
-if a == 1
-
-    rows = add(rows,veh,'Stationkeeping', ...
-        'Orbital stationkeeping','Baseline',1, ...
-        dragLifetime.DV_SK,0, ...
-        'Calculated','station_keeping',true);
-
-end
+        % Apply absolute drag compensation once for both parking options.
+        if a == 1
+            rows = add(rows,veh,'Stationkeeping', ...
+                'Orbital stationkeeping','Baseline',1, ...
+                dragLifetime.DV_SK,0, ...
+                'Calculated','station_keeping',true);
+        end
 
         P = parkingAcquisitionHCW( ...
             mu,Re,cfg.h_target_km, ...
@@ -472,7 +493,6 @@ end
             'Parking acquisition',label,1, ...
             P.DV_mps,P.TOF_min, ...
             'Estimated','Two-impulse HCW transfer',false);
-
 
         rows = add(rows,veh,'Parking', ...
             'Hohmann departure burn (already allocated)', ...
@@ -515,6 +535,7 @@ end
         SK = [SK;new];
     end
 end
+
 fprintf('\n========================================\n');
 fprintf('PARKING ARCHITECTURE RESULTS\n');
 fprintf('========================================\n');
@@ -626,6 +647,7 @@ if cfg.includeMomentumUnloading
         MU = [MU;newRow];
     end
 end
+
 fprintf('\n========================================\n');
 fprintf('MOMENTUM UNLOADING - PER VEHICLE\n');
 fprintf('========================================\n');
@@ -638,6 +660,7 @@ for veh = {'Taxi','ATLANTE'}
         abs(dvDeorbit),tofDeorbit/60, ...
         'Estimated','MA_deltav disposal model',true);
 end
+
 rows = add(rows,'Taxi','Contingency', ...
     'Aborted approach','Baseline', ...
     1, ...
@@ -653,6 +676,7 @@ for veh = {'Taxi','ATLANTE'}
         'Safety contingency and recovery','Baseline',1,NaN,NaN, ...
         'Open','Fault and recovery allocation unresolved',true);
 end
+
 rows = add(rows,'ATLANTE','Contingency','Aborted approach','Baseline', ...
     NaN,NaN,NaN,'Open','Atlante-specific contingency unresolved',true);
 rows = add(rows,'ATLANTE','Contingency','Collision avoidance','Baseline', ...
@@ -685,6 +709,7 @@ for vehicle = ["Taxi","ATLANTE"]
         end
     end
 end
+
 T.MarginedDV_perEvent_mps(T.Vehicle=="Kiki" & phase=="Loaded relocation") = ...
     mean(margin(DV_outbound_mps,false));
 T.MarginedDV_perEvent_mps(T.Vehicle=="Kiki" & phase=="Unloaded return") = ...
@@ -712,6 +737,7 @@ for veh = vehicles'
         end
     end
 end
+
 out = struct();
 out.cfg = cfg;
 out.phaseTable = T;
@@ -732,6 +758,8 @@ out.outboundLambert = outbound;
 out.returnLambert = returnTransfer;
 out.RPO_MC = RPO_MC;
 out.RPO_MC_PhaseTable = RPO_MC_Table;
+
+% Report baseline rows separately from alternative parking architectures.
 baseline = T(T.IncludeInBaseline,:);
 BudgetTable = table( ...
     baseline.Vehicle,string(baseline.Segment),string(baseline.Phase), ...
@@ -747,6 +775,7 @@ out.vehicleBudgetTables = struct();
 if ~isempty(cfg.vehicleBudgetFolder) && ~isfolder(cfg.vehicleBudgetFolder)
     mkdir(cfg.vehicleBudgetFolder);
 end
+
 for j = 1:numel(vehicles)
     name = char(vehicles(j));
     detail = BudgetTable(BudgetTable.Vehicle==name,:);
@@ -755,14 +784,15 @@ for j = 1:numel(vehicles)
         writetable(detail,fullfile(cfg.vehicleBudgetFolder,[name '.csv']));
     end
 end
+
 if ~isempty(cfg.vehicleBudgetFolder)
     writetable(V,fullfile(cfg.vehicleBudgetFolder,'Vehicle_Budget_Summary.csv'));
     writetable(SK,fullfile(cfg.vehicleBudgetFolder,'Parking_Stationkeeping.csv'));
 end
+
 out.retrievalAssumptions = struct('moduleAltitude_km',hModule, ...
     'moduleInclination_deg',iModule,'initialRAANOffset_deg',cfg.moduleRAANOffset_deg, ...
     'modeledFarFieldCoastDays',(outbound.transferTime_s/60+returnTOF_min)/1440);
-
 
 % SAVE ASSEMBLY OPTIMIZATION RESULTS
 
@@ -811,27 +841,32 @@ if isfinite(dv)
 else
     lifeDV = NaN;
 end
+
 if isfinite(tof)
     lifeTime = count*tof;
 else
     lifeTime = NaN;
 end
+
 rows(end+1,:) = {veh,seg,phase,arch, ...
     count,dv,tof,status,basis,logical(baseline), ...
     lifeDV,lifeTime};
 end
+
 function dv = circularPlaneChange(mu,r,iStart,iEnd,raanOffset)
 % Exact angle between orbital normals, expressed as a circular speed change.
 sinHalfSquared = sind((iEnd-iStart)/2)^2 + ...
     sind(iStart)*sind(iEnd)*sind(raanOffset/2)^2;
 dv = 2000*sqrt(mu/r)*sqrt(max(0,min(1,sinHalfSquared)));
 end
+
 function [dv1,dv2,tof] = hohmann(mu,r1,r2)
 a = (r1+r2)/2;
 dv1 = (sqrt(mu*(2/r1-1/a))-sqrt(mu/r1))*1000;
 dv2 = (sqrt(mu/r2)-sqrt(mu*(2/r2-1/a)))*1000;
 tof = pi*sqrt(a^3/mu);
 end
+
 function P = parkingAcquisitionHCW( ...
     mu,Re,h_km,x0,distance_m,architecture, ...
     ellipse,TOF_s)
@@ -885,6 +920,7 @@ vf = xf(4:6);
 if rcond(Phi_rv) < 1e-10
     error('Ill-conditioned HCW transfer duration.');
 end
+
 vTransfer = Phi_rv\(rf-Phi_rr*r0);
 dv1 = vTransfer-v0;
 vArrival = Phi_vr*r0 + Phi_vv*vTransfer;

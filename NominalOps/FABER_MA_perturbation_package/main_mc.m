@@ -1,4 +1,4 @@
-
+% Run the nine-phase RPO study from the perturbation-analysis package.
 clear; clc; close all;
 
 %% Configuration
@@ -19,6 +19,7 @@ cfg.thrust_N = 25;         % N per active thruster (or effective thrust)
 cfg.nActiveThrusters = 1;  % REPLACE with usable simultaneous thruster count
 cfg.thrustEfficiency = 1; % directional/control derating if applicable
 cfg.massTaxi_kg = 3503.59;
+
 cfg.Isp_s = 220;                 % PLACEHOLDER, replace with actual Isp
 cfg.maxPropellantCycle_kg = inf; % specify a finite cycle fuel allocation
 cfg.maxBurnFraction = 0.05;
@@ -93,10 +94,8 @@ for m = 1:size(R.valid,2)
     end
 end
 
-
 %% NEW: Plot all architectures in docked figures
 plot_FABER_RPO_P95(R);
-
 
 %% PHASE-BY-PHASE ANALYSIS
 % Architecture 5: Vbar / Vbar / GeneralHCW
@@ -111,6 +110,7 @@ if ~any(ok)
         warning('No feasible architectures for phase analysis.');
         return;
     end
+
     [~,j] = max(R.summary.Accepted(candidates));
     m = candidates(j);
     ok = R.valid(:,m);
@@ -195,11 +195,13 @@ if runShellSensitivity
     if any(R_shell.summary.Accepted>0)
         P_shell = FABER_RPO_Pareto(R_shell,cfg.paretoMinAcceptance);
     end
+
     fprintf('Nominal feasible scenarios: %d/%d\n', ...
         nnz(any(R.valid,2)),cfg.N);
     fprintf('Shell feasible scenarios:   %d/%d\n', ...
         nnz(any(R_shell.valid,2)),shellCfg.N);
 end
+
 %% OPTIONAL: FINITE-THRUST PROPAGATION OF SCREENED CANDIDATES
 % Executes after analytical MC + discrete Pareto candidate selection.
 % Use 'selected' to debug; 'pareto' for full frontier validation.

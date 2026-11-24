@@ -27,7 +27,6 @@ function fracDay = hms2fracday(hrs, mn, sec)
 %
 % ------------------------- - SpaceART Toolbox - --------------------------
 
-
 % Check the inputs
 %------------------
 
@@ -67,10 +66,8 @@ elseif sec<0 || sec>60
            'to 0 and strictly lower then 60']);
 end
 
-
 % Compute the fraction of day
 %-----------------------------
 fracDay = (hrs + (mn + sec/60)/60) / 24;
-
 
 return

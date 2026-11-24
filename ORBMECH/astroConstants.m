@@ -143,12 +143,12 @@ function out = astroConstants(in)
 %   [A]   DE405 - http://iau-comm4.jpl.nasa.gov/de405iom/de405iom.pdf
 %   [B]   Explanatory Supplement to the Astronomical Almanac. 1992. K. P.
 %         Seidelmann, Ed., p.706 (Table 15.8) and p.316 (Table 5.8.1),
-%         University Science Books, Mill Valley, California. 
+%         University Science Books, Mill Valley, California.
 %   [C]   Tholen, D.J. and Buie, M.W. 1990. "Further Analysis of
 %         Pluto-Charon Mutual Event Observations" BAAS 22(3):1129.
 %   [D]   Seidelmann, P.K. et al. 2007. "Report of the IAU/IAG Working
 %         Group on cartographic coordinates and rotational elements: 2006"
-%         Celestial Mech. Dyn. Astr. 98:155-180. 
+%         Celestial Mech. Dyn. Astr. 98:155-180.
 %   [F]   Anderson, J.D., et al. 1987. "The mass, gravity field, and
 %         ephemeris of Mercury" Icarus 71:337-349.
 %   [G]   Konopliv, A.S., et al. 1999. "Venus gravity: 180th degree and
@@ -156,19 +156,19 @@ function out = astroConstants(in)
 %   [H]   Folkner, W.M. and Williams, J.G. 2008. "Mass parameters and
 %         uncertainties in planetary ephemeris DE421." Interoffice Memo.
 %         343R-08-004 (internal document), Jet Propulsion Laboratory,
-%         Pasadena, CA. 
+%         Pasadena, CA.
 %   [I]   Jacobson, R.A. 2008. "Ephemerides of the Martian Satellites -
 %         MAR080" Interoffice Memo. 343R-08-006 (internal document),
-%         Jet Propulsion Laboratory, Pasadena, CA. 
+%         Jet Propulsion Laboratory, Pasadena, CA.
 %   [J]   Jacobson, R.A. 2005. "Jovian Satellite ephemeris - JUP230"
-%         private communication. 
+%         private communication.
 %   [K]   Jacobson, R.A., et al. 2006. "The gravity field of the Saturnian
 %         system from satellite observations and spacecraft tracking data"
-%         AJ 132(6):2520-2526. 
+%         AJ 132(6):2520-2526.
 %   [L]   Jacobson, R.A. 2007. "The gravity field of the Uranian system and
-%         the orbits of the Uranian satellites and rings" BAAS 39(3):453. 
+%         the orbits of the Uranian satellites and rings" BAAS 39(3):453.
 %   [M]   Jacobson, R.A. 2008. "The orbits of the Neptunian satellites and
-%         the orientation of the pole of Neptune" BAAS 40(2):296. 
+%         the orientation of the pole of Neptune" BAAS 40(2):296.
 %   [N]   Jacobson, R.A. 2007. "The orbits of the satellites of Pluto -
 %         Ephemeris PLU017" private communication.
 %   [W1]  http://ssd.jpl.nasa.gov/?planet_phys_par Last retrieved
@@ -182,7 +182,7 @@ function out = astroConstants(in)
 %   [M2]  Standish, E. M. 1998. JPL Planetary and Lunar Ephemerides,
 %         DE405/LE405.
 %   [M3]  Lunar Constants and Models Document, Ralph B. Roncoli, 23 Sept 2005,
-%         JPL Technical Document D-32296 
+%         JPL Technical Document D-32296
 %   [P1]  Mercury Fact sheet: last retrieved 21/11/2024
 %         https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html
 %   [P2]  Venus Fact sheet: last retrieved 21/11/2024
@@ -259,7 +259,7 @@ for i=1:length(in)
         case 8
             % out(i)=23.43928111*pi/180; % Definition in Wertz, SMAD
             out(i)=84381.412/3600*pi/180; % Definition in Horizon
-            % obliquity of ecliptic (J2000)    epsilon = 84381.412 (± 0.005) arcsec 
+            % obliquity of ecliptic (J2000)    epsilon = 84381.412 (± 0.005) arcsec
         case 9
             out(i)=0.1082626925638815e-2; % Definition in Wertz, SMAD
         case 11
@@ -315,7 +315,7 @@ for i=1:length(in)
         case 24
             % out(i)=0.33899200000000E+04; % From DITAN
             % out(i)=3389.50; % From Horizon [D]
-            out(i)=3389.9; % From Horizon [W3]            
+            out(i)=3389.9; % From Horizon [W3]
         case 25
             % out(i)=0.69911000000000E+05; % From DITAN
             out(i)=69911;   % From Horizon [D]
@@ -328,7 +328,7 @@ for i=1:length(in)
         case 28
             % out(i)=0.24624000000000E+05; % From DITAN
             % out(i)=24622;   % From Horizon [D]
-            out(i)= 24624; % From Horizon [W3]            
+            out(i)= 24624; % From Horizon [W3]
         case 29
             % out(i)=0.11510000000000E+04; % From DITAN
             out(i)=1151; 	% From Horizon [C]
