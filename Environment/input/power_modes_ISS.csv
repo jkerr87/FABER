@@ -1,0 +1,47 @@
+Vehicle,Mode,Description,Mean_W,Peak_W,Source,Status
+Taxi,TC,Commissioning / detumbling,574.55,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T1,Outbound transfer and phasing,569.3,1457.3,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T2,Cargo rendezvous / RPO,661.9,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T3,Cargo capture / manipulator,1621.9,2224.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T4,Return transfer and phasing,569.3,1457.3,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T5,Atlante approach / retreat,661.9,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T6,Cargo positioning,1921.9,2524.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T7,Empty cargo disposal,574.55,1457.3,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T8,Safe acquisition,567.9,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T9b,"Refuel berth / release, PV stowed",661.9,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T9,"Refuel, attached, PV stowed",402.0,402.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T10,Standby / station keeping,569.3,1264.1,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,T11,Inter-client transfer,574.55,1457.3,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Taxi,TD,End-of-life manoeuvre,574.55,1457.3,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,AC,Commissioning / detumbling,792.7,2201.5,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A1,Client orbit acquisition,792.7,2443.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A2,Station keeping / logistics,752.8,2201.5,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A3,Kiki charge support,1040.8,2489.5,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A4,Propellant services,1112.8,2561.5,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A6,Safe / hold,761.72,2201.5,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,A7,"Relocation, attached stack",792.7,2443.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Atlante,AD,Stack end-of-life manoeuvre,792.7,2443.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,KC,Attached commissioning,222.0,222.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K1,Release / secure for client change,544.1,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K2,Berthing / connection at Atlante,544.1,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K3,Acquire and retain module,642.0,642.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K4e,Empty transit to Atlante,544.1,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K4l,Loaded transit plus payload hold,544.1,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K5,Host handover / deployment,964.1,1470.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K6c,Connect to Rango,455.9,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K6,Charge Rango with relative hold,455.9,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K7,Charge at Atlante,222.0,222.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K8,Refuel at shared interface,222.0,222.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K9,Safe acquisition,454.5,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,K11,Host standby hold,455.9,1050.6,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Kiki,KB,Berthed standby,222.0,222.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,RD,Commissioning / stack disposal,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R1,Deployment / retrieval,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R2,Module passage,600.0,600.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R3,Locomotion,600.0,600.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R4,"Locomotion, assembly and verification",600.0,600.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R4w,Continuous welding screen,4080.0,4080.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R5,Connected recharge / standby,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R6,Safe hold,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R7,On-host standby,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner
+Rango,R8,Retained transport,108.0,108.0,PM3 Overleaf EPS model/reference/ISS/mode_power_budget.csv,PM3 screen; reconcile with subsystem owner

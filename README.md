@@ -136,6 +136,181 @@ clearance and uncertainty inputs. It supports preliminary trajectory
 screening. A navigation estimator, closed-loop controller, capture
 mechanics, and vehicle-specific qualification are separate work.
 
+### Environment, sunlight scheduling and EPS duty cycle
+
+From the ASMAD root, pass a Phase A result with its selected retrieval and
+assembly trajectories into the environment study.
+
+```matlab
+addpath('Environment');
+
+% Illustrative handover, loading and dwell durations in minutes.
+budget = MA_vehicle_budget_phaseA(struct('N_RPO_MC',30, ...
+    'captureWait_min',45,'handoverWait_min',10,'veicLoading_min',5));
+
+cfg = struct('epochUTC',datetime(2038,1,1,'TimeZone','UTC'), ...
+    'assemblyModuleIndices',1,'kikiHandover_min',5, ...
+    'outputFolder','FABER_Environment_Study');
+study = run_faber_environment(budget,cfg);
+```
+
+The epoch is the origin of the Phase A retrieval timeline. The schedule
+maintains one explicit cargo inventory and operates one Kiki/Rango pair
+at a time. Select real assembly interface indices, use `preloadedModules`
+for independent assembly work, and use `modulesPerRetrieval` to specify
+the cargo delivered by the default single retrieval. Unknown handover and
+loading durations stop the dependent schedule and appear in
+`study.openItems`.
+
+For a complete two-delivery example with one active assembly location,
+run from the ASMAD root:
+
+```matlab
+addpath('Environment');
+study = run_faber_environment_campaign('FABER_Environment_Campaign');
+% Use 3 for the 20-, 15-, and 10-degree case.
+three = run_faber_environment_campaign('FABER_Environment_Three',3);
+```
+
+For five modules, run `run_faber_environment_campaign('FABER_Environment_Five',5)`.
+The two Kiki/Rango pairs alternate one assembly site at a time. Kiki
+flies each loaded and empty relocation with Rango retained. Rango
+installs for 32.17 minutes from the PM3/PM4 duty cycle while Kiki waits
+at the site. The schedule uses the PM4 5-minute cargo load, handover and
+Atlante electrical berthing, plus the 16.67-minute deployment and
+recovery proxies. Relocation times come from the Phase A trajectories.
+
+The default charging planner checks modeled energy and reserve through
+each sortie and adds charging at Atlante only when required. The
+optional `chargeAsNeeded=false` setting restores the fixed charge
+windows. Docked standby power is accounted for separately.
+See `study.assemblySorties`, `study.chargeSummary`, and
+`study.epsSummary` for the schedule and power checks.
+
+The two-delivery example uses 20-degree and 10-degree initial phases.
+Both examples use a June 2038 epoch with Atlante RAAN at 180 degrees and
+assume 5 minutes of active capture followed by 40 minutes attached. The mission duty cycle and its
+detail tabs all share the same hours-since-epoch time axis. Reevaluate
+sunlight availability when changing the epoch or orbit geometry.
+
+To schedule more than one capture, supply the retrievals in flight order.
+
+```matlab
+cfg.retrievals = struct('moduleId',{'Module A','Module B'}, ...
+    'phaseAngle_deg',{budget.cfg.phaseAngle_deg,10},'cargoCount',{1,1});
+cfg.assemblyModuleIndices = [1 2];
+cfg.captureActive_min = 5;
+study = run_faber_environment(budget,cfg);
+study.retrievalSummary
+```
+
+Each angle is the module's argument of latitude offset from Atlante at
+`cfg.epochUTC`. All modules share the client orbit geometry and Phase A
+payload mass and dwell assumptions. Set the angles to the actual module
+states for the chosen epoch. After each delivery, Taxi aligns from its
+achieved Atlante berth to the parking departure gate in sunlight. The
+alignment uses an impulsive HCW model and sampled clearance checks.
+`taxiDeparture_min` sets its modeled duration. This preliminary departure
+model needs finite-burn and docking-interface validation.
+
+The next outbound Lambert solve uses the alignment end state and epoch.
+Taxi carries its remaining wet mass into each retrieval and sheds the
+Phase A payload mass at handover. No intermediate propellant top-up is
+modeled. Supply `taxiDryMass_kg` to apply a dry-mass limit. Assembly uses
+the cargo available at each handover, and one EPS replay spans all
+retrievals and assembly events. `study.retrievalSummary` reports delivery
+status, times, delta-v, and mass by retrieval. A blocked or pending trip
+has no reported final mass. `study.retrievalArcs` stores outbound and
+return transfers in columns one and two, and `study.returnLambert`
+exposes the most recent attempted return solve when available. The full
+duty-cycle timeline marks each completed delivery and opens a detail
+figure for each started retrieval.
+
+The reference replay uses the selected Phase A RPO durations without lighting delays. The gated
+replay requires full sunlight on the spacecraft and reference target
+during active RPO, Kiki relocation, and handovers. It preserves
+fly-through gates and reports a blocked operation when no suitable
+continuous window fits or its preceding hold cannot be used safely.
+It retargets the return Lambert arc after outbound lighting delays.
+
+If the original Taxi path is blocked, the environment study tries
+stationary V-bar entry holds and shorter nine-phase candidates under the
+mission's existing feasibility limits. It schedules the terminal closing
+and fly-through as one continuous sunlit chain on both approaches.
+Set `replanSunlightRPO=false` to replay only the original Phase A design.
+The fallback plan is selected for the environment study and does not
+replace the saved Phase A budget. See `study.rpoPlanning` for the outcome.
+
+When Taxi is blocked by lighting, the study also tests delays to its
+first Lambert departure after trying the normal and shorter RPO paths.
+`taxiDepartureSearch_min` sets the candidate delays, with defaults of
+15, 30, 45 and 60 minutes. Use `[]` to disable the search or
+`taxiInitialWait_s` to specify an initial wait. The parking drift and
+clearance must pass before Taxi retargets from the propagated parking
+state. See `study.rpoPlanning` for the delay selected. The closing chain
+still reserves one sunlight window through the following sunlit capture
+or handover.
+
+Before Kiki departs the loading berth or installation site, the
+scheduler checks the complete three-leg relocation and each intervening
+hold, including any required reacquisition. If a preview fails, it
+checks later departures from the attached location. Set
+`assemblyDepartureSearchStep_s` to refine the search and
+`maxWait_s` to set the departure wait limit. Only a passing preview
+enters the event ledger and EPS simulation. If none passes, Kiki stays
+attached and `study.openItems` reports the blocking leg.
+
+By default the entire Phase A capture duration needs sunlight. If the
+capture duration includes a confirmed attached wait, set
+`captureActive_min` to the part that requires sunlight. For example, a
+five-minute active capture and forty-minute attached wait use
+`captureWait_min=45` and `captureActive_min=5`. The example is an input
+assumption to validate against robotics operations.
+
+A relative hold may span eclipse if sampled HCW drift, including the
+specified initial-state error box, stays inside the allowed displacement
+and outside the keep-outs. The sampled screen checks approach-zone
+membership for RPO holds. Where a delay changes the nominal departure
+state, a sunlit two-impulse reacquisition must pass the clearance, speed
+and delta-V limits before resuming. These checks assume the supplied
+geometry and sample resolution. Use `clientHoldGeometry`,
+`atlanteHoldGeometry` and `assemblyHoldGeometry` to add actual
+spheres or capsule geometry.
+
+The study reports sun aspect relative to `aspectAxisLVLH` (default
+along-track +V), orbit beta, sunlight, penumbra and umbra. One standalone
+window contains all plots as tabs. The trajectory tabs compare the
+reference and sunlight-gated timelines. The Kiki and Rango assembly
+timeline shows the scheduled assembly work and reports any blocker, such
+as a missing Taxi handover or a failed eclipse-hold screen. If available,
+the Aerospace Toolbox eclipse audit uses the sampled inertial
+ephemerides and writes its intervals separately. A Toolbox or ephemeris
+failure is reported, and the geometric schedule uses the approximate
+Sun ephemeris when the planetary data are unavailable.
+
+The EPS replay uses the supplied PM4 hardware and power-mode tables,
+constrained bus dispatch, battery efficiencies and rainflow cycling.
+It uses measured lighting from the analysis, EOL reserve limits, and
+Atlante-to-Kiki and Kiki-to-Rango charging. By default it assumes the
+proposed retained-pair architecture and available docked standby power.
+The Rango deploy/recover entries are attached-interface time proxies,
+not independent flight paths. Set `retainRangoForRelocations=false` for
+a prepositioned Rango, or `dockedPairSupport=false` to assess
+battery-only standby. Enable `includeRefueling` for the optional PM4
+fluid-service windows and top-ups. `chargeSummary` records port energy,
+battery energy gain, and any residual time to the requested SoC.
+
+`study.ready` requires both a complete lighting schedule and a passing
+EPS energy/reserve replay. Check `study.turnaroundReady` separately for
+whether all spacecraft reach the configured end-of-cycle SoC target.
+Charge windows are configurable and the replay flags shortfalls so
+they can be revised. Battery lifetime outputs
+give observed depth of discharge and equivalent cycles. Set
+`journeyFraction` only when the fraction of mission exposure represented
+by the cycle is known. An exposure estimate is not a calibrated battery
+life prediction. The LVLH aspect axis is a reference direction. PV
+defaults to PM4 pointing factors unless `pvUsesAspect` is selected.
+
 ### Parking departure and relative stationkeeping
 
 Phase A estimates a two-impulse HCW transfer from each parking option to

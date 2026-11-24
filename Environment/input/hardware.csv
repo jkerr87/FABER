@@ -1,0 +1,7 @@
+Vehicle,PV_m2,PV_Credited,Battery_kWh,BatteryBlock_kWh,BatteryBlock_kg,ChargeC_per_h,DischargeC_per_h,PointingFactor,ShadowFactor,Status
+Taxi,10,1,36.4,9.1,64.2,0.2,0.3333333333333333,0.7,0.95,"PM3 assumption; update pointing, pack design"
+Atlante,40,1,45.5,9.1,64.2,0.2,0.3333333333333333,0.65,0.9,"PM3 assumption; update pointing, pack design"
+Kiki 1,0.5,0,26.3872,0.1736,1.15,0.3333333333333333,0.3333333333333333,0,1,Auxiliary PV has no energy credit
+Kiki 2,0.5,0,26.3872,0.1736,1.15,0.3333333333333333,0.3333333333333333,0,1,Auxiliary PV has no energy credit
+Rango 1,0,0,10.2424,0.1736,1.15,0.3333333333333333,0.3333333333333333,0,1,PM3 59 block reference
+Rango 2,0,0,10.2424,0.1736,1.15,0.3333333333333333,0.3333333333333333,0,1,PM3 59 block reference
