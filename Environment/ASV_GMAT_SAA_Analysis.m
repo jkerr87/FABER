@@ -8,9 +8,9 @@
 clear; clc; close all;
 
 %% USER SETTINGS
-inputFile = 'FABER_ISS_Eclipse_2038.txt'; % put in current MATLAB folder, or use full path
+inputFile = 'ASV_SAA_Results\FABER_ISS_SunOrbit_2038.txt'; % put in current MATLAB folder, or use full path
 outDir = 'ASV_SAA_Results';
-eclipseFile = 'FABER_ISS_Eclipse_2038.txt';
+eclipseFile = 'ASV_SAA_Results\FABER_ISS_Eclipse_2038.txt';
 
 figWidth = 6.2; figHeight = 3.9; % inches, ~half widescreen PowerPoint slide
 Re = 6378.137;          % km, spherical Earth approximation
@@ -22,15 +22,39 @@ end
 if ~exist(outDir,'dir'), mkdir(outDir); end
 
 %% READ / VALIDATE DATA
-M = readmatrix(inputFile,'FileType','text');
-if isempty(M)
-    error('The GMAT report could not be read. Export a 10-column numerical ReportFile.');
+
+% Detect delimiter from first line
+fid = fopen(inputFile,'r');
+firstLine = fgetl(fid);
+fclose(fid);
+
+if contains(firstLine,'S')
+    fprintf('Detected GMAT S-delimited format.\n');
+    M = readmatrix(inputFile, ...
+        'FileType','text','Delimiter','S');
+else
+    M = readmatrix(inputFile,'FileType','text');
 end
-M = M(~all(isnan(M),2),:); % remove numeric-free header rows
+
+M = M(~all(isnan(M),2),:);
+
 if size(M,2) ~= 10
-    error(['Expected exactly 10 columns but found %d.\n' ...
-        'In GMAT, export only ElapsedDays, SC X/Y/Z, SC VX/VY/VZ, Sun X/Y/Z, in that order.'], size(M,2));
+    error('Expected 10 columns, found %d.',size(M,2));
 end
+
+if any(~isfinite(M(:)))
+    error('Invalid numeric values in GMAT report.');
+end
+
+% Verify orbital altitude
+Re = 6378.137;
+r0 = M(1,2:4);
+h0 = norm(r0) - Re;
+
+fprintf('Imported %d rows and %d columns.\n', ...
+    size(M,1),size(M,2));
+fprintf('Initial orbit altitude: %.2f km\n',h0);
+
 if any(~isfinite(M(:)))
     error('Missing/non-numeric entries found. Check Sun position, report headers, and column order.');
 end
