@@ -31,6 +31,14 @@ cfg.returnLambertTOF_s = [];
 cfg.returnLambertRevolutions = [];
 
 cfg.farFieldIsp_s = 315.5;
+% Installed hardware from the vehicle propulsion table. The firing-time
+% estimates assume one main engine or four co-aligned RCS thrusters.
+cfg.atlanteTransferPropulsion = struct('type',"MAIN - Nammo LEROS 4-ET", ...
+    'nInstalled',5,'nActiveThrusters',1,'thrust_N',1310,'Isp_s',321.0,'thrustEfficiency',1);
+cfg.atlanteParkingPropulsion = struct('type',"RCS - IHI HBT-1", ...
+    'nInstalled',20,'nActiveThrusters',4,'thrust_N',124.4,'Isp_s',274.9,'thrustEfficiency',1);
+cfg.kikiTransferPropulsion = struct('type',"RCS/translation - Moog DST-12", ...
+    'nInstalled',16,'nActiveThrusters',4,'thrust_N',22,'Isp_s',297.0,'thrustEfficiency',1);
 cfg.outboundMinimumPerigee_km = 160;
 cfg.outboundDepartureEpoch_s = 0; % Seconds on the scenario clock.
 cfg.outboundDepartureArgumentOfLatitude_deg = 0;
@@ -43,7 +51,15 @@ cfg.payloadMass_kg = 2000;
 
 cfg.assemblyTransferTimes_min = 5:5:130;
 cfg.vehicleBudgetFolder = '';
-cfg.disposalPerigee_km = 160;
+cfg.vehicleReportTemplate = "";
+cfg.vehicleReportWorkbook = "";
+% PassiveDeorbit reference assumptions for end-of-life configurations.
+cfg.disposalPerigee_km = 160; % Drag integration cutoff.
+cfg.disposalDensityProfile = "Low";
+cfg.disposalTaxiMass_kg = 1059.88;
+cfg.disposalTaxiArea_m2 = 15;
+cfg.disposalAtlanteMass_kg = 4805.47+2*606.58+2*230; % Attached Kiki/Rango pairs.
+cfg.disposalAtlanteArea_m2 = 100;
 
 % Target-relative gate states in LVLH meters and meters per second.
 cfg.x0_client = [50;-2000;20;0.01;0.04;-0.01];
@@ -78,8 +94,8 @@ cfg.skStep_s = 60;
 cfg.rhoRef_kgm3 = 1e-12;
 cfg.scaleHeight_m = 60000;
 
-% Unknown operating periods stay open until supplied by the scenario.
-cfg.captureWait_min = NaN;
+% Default capture dwell for the coupled return. Other service times stay open.
+cfg.captureWait_min = 5;
 cfg.handoverWait_min = NaN;
 cfg.veicLoading_min = NaN;
 cfg.veicCharge_min = NaN;
@@ -108,4 +124,13 @@ cfg.atlanteParkingAZ_m = NaN; % Host approach-zone radius requires a mission inp
 cfg.relativeSKAZmargin_m = 0;
 cfg.N_RPO_MC = 1000;
 cfg.RPO_seed_client = 42;
+% Finite-thrust replay of the budget representative, or all nominal pairs.
+cfg.rpoFiniteValidation = "representative";
+cfg.rpoClientGeometry = struct();
+cfg.rpoAtlanteGeometry = struct();
+cfg.rpoTerminalCorridorHalfWidth_m = Inf;
+cfg.rpoMaxPropellantCycle_kg = Inf;
+cfg.rpoMaxDVPerCycle_mps = Inf;
+cfg.rpoMaxBurnDuration_s = Inf;
+cfg.rpoMaxPeakAccel_mps2 = Inf;
 end

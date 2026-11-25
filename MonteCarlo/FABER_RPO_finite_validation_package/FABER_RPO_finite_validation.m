@@ -26,6 +26,7 @@ V.mode = mode;
 V.attempted = false(N,M);
 V.passed = false(N,M);
 V.details = cell(N,M);
+V.phaseReason = cell(N,M);
 V.failureReason = strings(N,M);
 V.finitePareto = false(N,M);
 if mode == "none"
@@ -145,24 +146,28 @@ for q=1:numel(ii)
     if isempty(rec), continue; end
     V.attempted(i,m)=true;
     candidateDetails=cell(2,5);
+    phaseReason=repmat("Not run",2,5);
+    coupled=isfield(rec,'ReturnTransfer') && ~isempty(rec.ReturnTransfer);
     ok=true;
     maxPos=0; maxVel=0; maxSpeed=0; maxClosing=0;
     totalProp=0; totalBurn=0;
     why="";
     mass=cfg.massTaxi_kg; % continuous propellant mass across BOTH approaches
     for leg=1:2
-        % Add captured payload before return-to-ATLANTE approach.
-        if leg == 2 && ...
-                isfield(cfg,'enablePayloadMassChange') && ...
-                cfg.enablePayloadMassChange
-
-            mass = mass + cfg.payloadMass_kg;
-        end
-
+        legCfg = cfg;
         if leg==1
             approach=rec.Client;
+            if isfield(cfg,'clientH_km'), legCfg.h_km=cfg.clientH_km; end
+            if isfield(cfg,'clientGeometry'), legCfg.pathGeometry=cfg.clientGeometry; end
         else
             approach=rec.ATLANTE;
+            if isfield(cfg,'hostGeometry'), legCfg.pathGeometry=cfg.hostGeometry; end
+            if coupled
+                % The checked return mass includes payload and the far-field burns.
+                mass=rec.massReturnStart_kg;
+            elseif isfield(cfg,'enablePayloadMassChange') && cfg.enablePayloadMassChange
+                mass=mass+cfg.payloadMass_kg;
+            end
         end
 
         for k=1:5
@@ -174,7 +179,7 @@ for q=1:numel(ii)
 
             % Select main or RCS propulsion for this phase
             phaseCfg = FABER_RPO_phase_propulsion( ...
-                cfg,phaseNumber);
+                legCfg,phaseNumber);
 
             % Propagate with the correct propulsion system
             [P,fail] = validateLeg(z,phaseCfg,mass,k);
@@ -190,14 +195,22 @@ for q=1:numel(ii)
                 maxClosing=max(maxClosing,P.maxClosing_mps);
             end
 
+            phaseReason(leg,k)=fail;
             if strlength(fail)>0
-                why=sprintf('leg%d_phase%d_%s',leg,2*k-1,fail);
+                if ok, why=sprintf('leg%d_phase%d_%s',leg,2*k-1,fail); end
                 ok=false;
-                break;
+                if ~coupled, break; end
+                if isempty(P), mass=mass-approach.fuelPhase_kg(phaseNumber); end
+            end
+            if coupled && k<5
+                % Holds consume their nominal allowance. Only burns are replayed.
+                holdPropellant=approach.fuelPhase_kg(phaseNumber+1);
+                mass=mass-holdPropellant;
+                totalProp=totalProp+holdPropellant;
             end
         end
 
-        if ~ok, break; end
+        if ~ok && ~coupled, break; end
     end
 
     if totalProp > cfg.maxPropellantCycle_kg
@@ -207,6 +220,7 @@ for q=1:numel(ii)
     V.passed(i,m)=ok;
     V.failureReason(i,m)=why;
     V.details{i,m}=candidateDetails;
+    V.phaseReason{i,m}=phaseReason;
     rows(end+1,:)={i,m,ok,why,R.CycleDV_mps(i,m), ...
         R.CycleTOF_min(i,m),totalProp,totalBurn,maxPos,maxVel, ...
         maxClosing}; %#ok<AGROW>
@@ -262,6 +276,9 @@ if z.isImpulsive
     if strlength(why)>0, fail=why; return; end
     if (t1+t2)>T+1e-7
         fail="burns_exceed_transfer"; return;
+    end
+    if (t1+t2)/T>cfg.maxBurnFraction+1e-12
+        fail="finite_impulsive_fraction"; return;
     end
 
     segments={ [0,t1],F1;[t1,T-t2],zeros(3,1);[T-t2,T],F2 };
@@ -341,6 +358,17 @@ end
 
 if phase>=4 && any(rho<cfg.final_m(1)-tol)
     fail="target_passage";
+end
+
+if isfield(cfg,'pathGeometry') && ~isempty(fieldnames(cfg.pathGeometry)) && ...
+        FABER_path_clearance(r',cfg.pathGeometry)<=0
+    fail="finite_obstacle_clearance";
+end
+if isfield(cfg,'terminalCorridorHalfWidth_m') && isfinite(cfg.terminalCorridorHalfWidth_m)
+    inside = rho<=cfg.KOZ_m;
+    if any(r(inside,2)>0 | hypot(r(inside,1),r(inside,3))>cfg.terminalCorridorHalfWidth_m)
+        fail="finite_terminal_corridor";
+    end
 end
 
 posErr=norm(states(end,1:3)'-z.targetState(1:3));

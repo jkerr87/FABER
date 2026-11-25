@@ -139,6 +139,27 @@ rows = add(rows,'Taxi','Outbound far', ...
 
 % Initialize paired RPO from the propagated outbound gate state.
 mcCfg = FABER_phaseA_rpo_config(cfg,mu,Re,outbound);
+% Restore the report's initial release, independently of parking alignment
+% and the Lambert burn. Retain the report model's Earth constants.
+initialDepartureCfg = ASV_RPO_MC_config();
+initialDepartureCfg.h_km = cfg.h_target_km;
+initialDepartureCfg.massTaxi_kg = cfg.massTaxi_kg;
+initialDepartureCfg.departure = struct( ...
+    'initialState',[0;-5;0;0;0;0],'finalState',[0;-350;0;0;0;0], ...
+    'TOF_min',60,'propulsion','rcs','maxSpeed_mps',1,'minSeparation_m',5, ...
+    'posTolerance_m',1,'velTolerance_mps',0.01);
+initialDeparture = FABER_Taxi_initial_departure(initialDepartureCfg);
+departureDV = NaN;
+departureStatus = 'Open';
+if initialDeparture.feasible
+    departureDV = initialDeparture.DV_mps;
+    departureStatus = 'Estimated';
+end
+rows = add(rows,'Taxi','Initial departure','Atlante Departure','Baseline',1, ...
+    departureDV,initialDeparture.TOF_min,departureStatus, ...
+    'Continuous-thrust RCS release from 5 m to 350 m behind Atlante',true);
+
+
 RPO_MC = FABER_RPO_9phase_MC(mcCfg);
 phases = RPO_MC.phaseNames;
 valid = find(RPO_MC.valid(:,1));
@@ -215,6 +236,7 @@ fprintf('TAXI MONTE CARLO RPO PHASE BUDGET\n');
 fprintf('========================================\n');
 disp(RPO_MC_Table);
 RPO_MC.SelectedCycle = idxCycle;
+rpoChecks = FABER_phaseA_rpo_checks(RPO_MC,idxCycle,cfg.rpoFiniteValidation);
 RPO_MC.PhaseTable = RPO_MC_Table;
 rows = add(rows,'Taxi','Payload', ...
     'Capture module','Baseline',1, ...
@@ -654,14 +676,33 @@ fprintf('\n========================================\n');
 fprintf('MOMENTUM UNLOADING - PER VEHICLE\n');
 fprintf('========================================\n');
 disp(MU);
-[dvDeorbit,~,tofDeorbit] = hohmann( ...
-    mu,r0,Re+cfg.disposalPerigee_km);
-for veh = {'Taxi','ATLANTE'}
-    rows = add(rows,veh{1},'End of life', ...
-        'Deorbit','Baseline',1, ...
-        abs(dvDeorbit),tofDeorbit/60, ...
-        'Estimated','MA_deltav disposal model',true);
+disposalProfile = string(validatestring(cfg.disposalDensityProfile,{'Low','Moderate'}));
+disposal = table();
+disposalVehicles = ["Taxi","ATLANTE"];
+disposalMass = [cfg.disposalTaxiMass_kg,cfg.disposalAtlanteMass_kg];
+disposalArea = [cfg.disposalTaxiArea_m2,cfg.disposalAtlanteArea_m2];
+disposalCd = [cfg.CdTaxi,cfg.CdAtlante];
+for j = 1:numel(disposalVehicles)
+    veh = disposalVehicles(j);
+    [natural,burn] = PassiveDisposal(disposalCd(j),disposalMass(j), ...
+        disposalArea(j),cfg.h_target_km,false,cfg.disposalPerigee_km);
+    burn.Vehicle = repmat(veh,height(burn),1);
+    burn.Mass_kg = repmat(disposalMass(j),height(burn),1);
+    burn.Cd = repmat(disposalCd(j),height(burn),1);
+    burn.Cutoff_km = repmat(cfg.disposalPerigee_km,height(burn),1);
+    burn.NaturalDecay_years = repmat(natural.NaturalDecay_low_years,height(burn),1);
+    burn.NaturalDecay_years(burn.Activity=="Moderate") = natural.NaturalDecay_moderate_years;
+    burn.Selected = burn.Activity==disposalProfile;
+    disposal = [disposal;burn]; %#ok<AGROW>
+    selected = burn(burn.Selected,:);
+    method = "Burn-assisted drag disposal";
+    if selected.DeltaV_m_s==0, method = "Drag-only disposal"; end
+    basis = sprintf('%s, %s activity, %.3f years to %.0f km cutoff', ...
+        method,disposalProfile,selected.Decay_years,cfg.disposalPerigee_km);
+    rows = add(rows,char(veh),'End of life','Deorbit','Baseline',1, ...
+        selected.DeltaV_m_s,NaN,'Estimated',basis,true);
 end
+disposal = movevars(disposal,'Vehicle','Before','Orbit');
 
 rows = add(rows,'Taxi','Contingency', ...
     'Aborted approach','Baseline', ...
@@ -743,6 +784,8 @@ end
 out = struct();
 out.cfg = cfg;
 out.phaseTable = T;
+out.taxiInitialDeparture = initialDeparture;
+out.disposal = disposal;
 out.vehicleTotals = V;
 out.vehicleScenarioTotals = S;
 out.annualSK = SK;
@@ -759,6 +802,7 @@ out.massAssumptions = table( ...
 out.outboundLambert = outbound;
 out.returnLambert = returnTransfer;
 out.RPO_MC = RPO_MC;
+out.rpoChecks = rpoChecks;
 out.RPO_MC_PhaseTable = RPO_MC_Table;
 
 % Report baseline rows separately from alternative parking architectures.
@@ -790,6 +834,20 @@ end
 if ~isempty(cfg.vehicleBudgetFolder)
     writetable(V,fullfile(cfg.vehicleBudgetFolder,'Vehicle_Budget_Summary.csv'));
     writetable(SK,fullfile(cfg.vehicleBudgetFolder,'Parking_Stationkeeping.csv'));
+    writetable(disposal,fullfile(cfg.vehicleBudgetFolder,'Passive_Disposal.csv'));
+    writetable(rpoChecks.cases,fullfile(cfg.vehicleBudgetFolder,'RPO_Cases.csv'));
+    writetable(rpoChecks.casePhases,fullfile(cfg.vehicleBudgetFolder,'RPO_Case_Phases.csv'));
+    writetable(rpoChecks.architectures,fullfile(cfg.vehicleBudgetFolder,'RPO_Architectures.csv'));
+    writetable(rpoChecks.propulsion,fullfile(cfg.vehicleBudgetFolder,'RPO_Propulsion.csv'));
+    writetable(rpoChecks.summary,fullfile(cfg.vehicleBudgetFolder,'RPO_Checks.csv'));
+    writetable(rpoChecks.counts,fullfile(cfg.vehicleBudgetFolder,'RPO_Check_Counts.csv'));
+    writetable(rpoChecks.rejections,fullfile(cfg.vehicleBudgetFolder,'RPO_Rejections.csv'));
+    if ~isempty(rpoChecks.phases)
+        writetable(rpoChecks.phases,fullfile(cfg.vehicleBudgetFolder,'RPO_Phase_Checks.csv'));
+    end
+    if ~isempty(rpoChecks.finite.table)
+        writetable(rpoChecks.finite.table,fullfile(cfg.vehicleBudgetFolder,'RPO_Finite_Burn.csv'));
+    end
 end
 
 out.retrievalAssumptions = struct('moduleAltitude_km',hModule, ...
@@ -809,6 +867,17 @@ out.assemblyDV_outbound_mps = DV_outbound_mps;
 out.assemblyDV_return_mps = DV_return_mps;
 
 out.assemblyObjective = string(opts.objective);
+
+out.transferFiring = FABER_transfer_firing(out);
+if ~isempty(cfg.vehicleBudgetFolder)
+    writetable(out.transferFiring,fullfile(cfg.vehicleBudgetFolder,'Transfer_Firing.csv'));
+end
+
+if strlength(string(cfg.vehicleReportTemplate))>0 || ...
+        strlength(string(cfg.vehicleReportWorkbook))>0
+    out.vehicleReportWorkbook = export_FABER_vehicle_report(out, ...
+        cfg.vehicleReportTemplate,cfg.vehicleReportWorkbook);
+end
 
 fprintf('\n====================================================\n');
 fprintf('FABER PHASE A - INDIVIDUAL DELTA V BUDGET\n');

@@ -5,6 +5,16 @@
 % out = MA_vehicle_budget_phaseA(cfg);
 % print_FABER_budget(out);
 
+% run with raan = 100m/s budget
+budget = MA_vehicle_budget_phaseA(struct('interClientRAANReserve_mps', 100));
+
+% save file
+xlsx = fullfile(pwd, 'PhaseA_Vehicle_Budget.xlsx');
+
+writetable(budget.vehicleTotals, xlsx, 'Sheet', 'Summary');
+writetable(budget.budgetTable,   xlsx, 'Sheet', 'Maneuver Detail');
+
+winopen(xlsx)
 
 % ENVIRO ANALYSIS
 addpath('Environment');

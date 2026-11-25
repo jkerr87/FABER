@@ -25,6 +25,10 @@ codegen/
 # Monte Carlo and simulation outputs
 ASV_RPO_MC_results/
 results/
+!/Results/
+/Results/*
+!/Results/print_FABER_budget.m
+!/Results/export_FABER_vehicle_report.m
 outputs/
 plots/
 

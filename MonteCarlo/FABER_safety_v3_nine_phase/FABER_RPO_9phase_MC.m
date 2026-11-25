@@ -115,6 +115,7 @@ TOFphase = nan(N,M,2,9);
 reason = strings(N,M);
 records = cell(N,M);
 clientCandidates = cell(N,M);
+hostCandidates = cell(N,M); % Completed return approach rejected by a cycle-level cap.
 initialStates = nan(6,N,2);
 
 %% 3. PAIRED MONTE CARLO
@@ -206,6 +207,7 @@ for i = 1:N
         if cfg.enablePropulsionConstraints && ...
                 cycleFuel > cfg.maxPropellantCycle_kg
 
+            hostCandidates{i,m} = host;
             reason(i,m) = "Cycle propellant allocation";
             continue;
         end
@@ -213,6 +215,7 @@ for i = 1:N
         if cfg.enablePropulsionConstraints && ...
                 client.dv+host.dv > cfg.maxDV_perCycle_mps
 
+            hostCandidates{i,m} = host;
             reason(i,m) = "Cycle DV limit";
             continue;
         end
@@ -359,6 +362,7 @@ R.commonFeasible = common;
 R.rejectionReason = reason;
 R.records = records;
 R.clientCandidates = clientCandidates;
+R.hostCandidates = hostCandidates;
 R.initialStates_LVLH = initialStates;
 
 R.phaseNames = { ...

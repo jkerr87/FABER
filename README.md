@@ -40,6 +40,81 @@ quoted over one relocation round trip. Rango is carried by Kiki
 during orbital transfers, so the Rango table flags unresolved surface
 operations and the Kiki table has an open host-access transport line.
 
+Phase A evaluates end-of-life disposal using `PassiveDeorbit/PassiveDisposal.m`
+at the configured circular orbit altitude. The default budgets the low solar
+activity profile. The model assigns zero delta-V if natural decay reaches
+the cutoff within five years, or an insertion burn followed by drag decay
+otherwise. Set the disposal masses and effective projected areas in
+`FABER_phaseA_defaults` or override them for a specific release configuration.
+Atlante's reference mass includes the two attached Kiki/Rango pairs. Both
+density profiles and their elapsed decay times are reported in `out.disposal`,
+`Passive_Disposal.csv` and the workbook's **Passive Disposal** tab.
+
+The baseline budgets Taxi's initial 60-minute continuous-thrust RCS
+release from 5 m to 350 m behind Atlante. Taxi's parking departure
+alignment remains in the parking scenarios and phase ledger. The
+release budget row is a standalone estimate. The outbound Lambert
+still starts at the configured parking handoff state.
+
+The Phase A export includes nominal RPO checks, first-rejection counts,
+per-phase ranges and speeds, burn use, and a finite-thrust replay of the
+budget representative and the trajectories at each nominal leg P95. Use
+`rpoFiniteValidation="all"` to replay every
+nominally passing pair or `"none"` to skip the replay. The replay tests
+powered phases from their nominal starts, using the coupled arrival masses
+and local chief altitudes. It reports finite errors separately from the
+nominal delta-V allocation. Set mission-specific geometry, terminal corridor,
+or cycle and burn limits through the `rpo...` inputs in `FABER_phaseA_defaults`.
+The checks report absent geometry and optional limits as unconfigured.
+The Excel workbook lists the nominal Client and Atlante RPO leg P95s in
+the maneuver budget and the leg P95s by architecture and acceptance population in
+**RPO P95**. Detailed cases, phase rows, and checks remain in the MATLAB
+result and the optional CSV export. The workbook's **Relative SK** tab shows
+the raw annual rate and the raw and margined totals over the modeled exposure.
+**RPO Propulsion** reports the powered phases of each leg's P95 trajectory.
+It records the selected trial, thruster group, configured active and installed
+counts, rated thrust, Isp, and the modeled firing seconds from finite replay.
+The full replay adds the P95 trajectories among the finite-thrust passes.
+
+To also refresh the `MA_DV_Vehicle.xlsx` report layout, pass the original
+template path and a separate destination to Phase A. The run refreshes
+the ISS-like tab for a prograde orbit or the SSO-like tab for a retrograde
+orbit. Run the second orbit with the same destination to fill its tab.
+The heading, row layout and formatting come from the template. Managed
+cells contain modeled values, including separate nominal RPO leg P95s.
+Unresolved costs and times remain blank. In the ToF column, modeled
+maneuver times are in minutes and disposal decay is explicitly in years.
+Each orbit also gets its own RPO propulsion tab.
+The **Transfer Firing** tabs cover injection and client changes, parking
+maneuvers, the initial Taxi release, both burns on each Lambert leg,
+disposal insertion and the mean loaded/unloaded Kiki relocation. The Taxi
+release uses its simulated firing time. Powered impulsive Taxi transfers
+use equivalent firing time at the configured thrust and Isp, excluding
+coast time and delta-V margin. The Lambert rows carry the mass between
+burns and use the captured-stack mass at return departure. Atlante uses
+LEROS 4-ET main propulsion for injection, client changes and disposal,
+and HBT-1 RCS for parking. Kiki uses DST-12 thrusters for translation.
+The defaults assume one active Atlante main engine and four active thrusters
+in each RCS group, with installed hardware reported separately. Override
+`atlanteTransferPropulsion`, `atlanteParkingPropulsion`, or
+`kikiTransferPropulsion` with the confirmed firing allocation. Supply
+`type`, `nActiveThrusters`, `thrust_N` per thruster, `Isp_s`, and
+`thrustEfficiency`, with optional `nInstalled`.
+
+```matlab
+cfg = struct('vehicleReportTemplate','C:/path/to/MA_DV_Vehicle.xlsx', ...
+    'vehicleReportWorkbook',fullfile(pwd,'MA_DV_Vehicle_Simulation.xlsx'));
+iss = MA_vehicle_budget_phaseA(cfg);
+cfg.h_target_km = 680.12;
+cfg.i_target_deg = 98.12;
+cfg.hClientSpread_km = 72.84;
+cfg.iClientSpread_deg = 0.31;
+sso = MA_vehicle_budget_phaseA(cfg);
+```
+
+The original Phase A workbook still exports with `print_FABER_budget(iss)`.
+The CSV option `vehicleBudgetFolder` can also be used in the same run.
+
 Phase A uses `ORBMECH/lambertMR.m` to connect Taxi's parking departure
 handoff to the module-relative RPO gate `cfg.x0_client`. The module starts
 `phaseAngle_deg` ahead in argument of latitude. Set the module orbit
@@ -55,7 +130,8 @@ search with `outboundLambertTOF_s` and `outboundLambertRevolutions`.
 `outboundDepartureEpoch_s` sets the scenario clock at the pre-burn handoff.
 The initial orbit orientations are set at that epoch.
 
-Set `captureWait_min` to run the coupled return. Each successful nominal
+The coupled return uses a five-minute capture dwell by default. Override
+`captureWait_min` for a different scenario. Each successful nominal
 client approach supplies its terminal LVLH state and elapsed time. Phase A
 models instantaneous capture by combining Taxi and module position and
 momentum, then propagates the resulting stack and Atlante through the

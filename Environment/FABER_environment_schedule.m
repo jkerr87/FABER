@@ -373,9 +373,9 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         client = setGate(client,arc.arrivalLVLH);
         geometry = obstacle([0;0;0],cfg.rpoHoldKeepOut_m,cfg.clientHoldGeometry);
         before = recoveryDV;
-        [time,ok] = approach("Taxi","Client","T2",client,chief,time,geometry);
+        [time,ok,exponent] = approach("Taxi","Client","T2",client,chief,time,geometry);
         if ~ok, return; end
-        captured = rpoMass(outMass,client,record.massOutboundStart_kg,before)+phase.payloadMass_kg;
+        captured = rpoMass(outMass,client,record.massOutboundStart_kg,before)*exp(-exponent)+phase.payloadMass_kg;
         if ~massOK(captured,phase.payloadMass_kg,"Capture operations",time), return; end
 
         captureHold = @(q) fixedLVLH(chief,q,client.terminalLVLH);
@@ -415,9 +415,9 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         host = setGate(host,returnArc.arrivalLVLH);
         geometry = obstacle([0;0;0],cfg.rpoHoldKeepOut_m,cfg.atlanteHoldGeometry);
         before = recoveryDV;
-        [time,ok] = approach("Taxi","Atlante","T5",host,atlante,time,geometry);
+        [time,ok,exponent] = approach("Taxi","Atlante","T5",host,atlante,time,geometry);
         if ~ok, return; end
-        unloaded = rpoMass(returnMass,host,record.massReturnStart_kg,before)-phase.payloadMass_kg;
+        unloaded = rpoMass(returnMass,host,record.massReturnStart_kg,before)*exp(-exponent)-phase.payloadMass_kg;
         if ~massOK(unloaded,0,"Taxi to Atlante handover",time), return; end
 
         berth = @(q) fixedLVLH(atlante,q,host.terminalLVLH);
@@ -452,14 +452,21 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         r.transferDetails{1}.startState = state;
     end
 
-    function [finish,ok] = approach(veh,leg,mode,r,chief,time,hazards)
-        finish = time; ok = true;
+    function [finish,ok,exponent] = approach(veh,leg,mode,r,chief,time,hazards)
+        finish = time; ok = true; exponent = 0;
         chiefAtStart = chief(time);
         n = sqrt(mu/norm(chiefAtStart(1:3))^3);
         for k=1:numel(r.trace)
             activity = leg+" "+string(budget.RPO_MC.phaseNames{k});
             dt = r.tofPhase(k)*60;
             if dt<=0, continue; end
+            if enforce && k==1 && cfg.rpoExtraHomingHolds>0
+                [arrival,staged,exponent] = stagedHoming(veh,leg,mode,r,chief,finish,n,hazards,dt);
+                if staged
+                    finish = arrival;
+                    continue;
+                end
+            end
             trace = r.trace{k};
             if enforce && k>=7
                 % Protect the uninterrupted closing chain through the HP4
@@ -487,6 +494,90 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
                     begin,chief,n,bounds,leg,false,true,r.dvPhase(k),0);
             end
             if ~ok, return; end
+        end
+    end
+
+    function [finish,ok,exponent] = stagedHoming(veh,leg,mode,r,chief,time,n,hazards,dt)
+        % Rebuild Homing 1 with stationary V-bar gates outside the AZ.
+        % Preview every subleg and its waits before committing the route.
+        finish = time;
+        ok = false;
+        exponent = 0;
+        mc = budget.RPO_MC.cfg;
+        p = FABER_RPO_phase_propulsion(mc,1);
+        if ~isempty(p.thrusterDirections_LVLH) || ~p.enablePropulsionConstraints || ...
+                isfinite(mc.maxDV_perCycle_mps) || isfinite(mc.maxPropellantCycle_kg)
+            return;
+        end
+        if leg=="Client"
+            geometry = mc.clientGeometry;
+            waitGeometry = cfg.clientHoldGeometry;
+        else
+            geometry = mc.hostGeometry;
+            waitGeometry = cfg.atlanteHoldGeometry;
+        end
+        if ~isempty(fieldnames(geometry)) && ~isequal(geometry,waitGeometry), return; end
+
+        z = r.transferDetails{1};
+        initial = z.startState;
+        goal = z.targetState;
+        if any([initial(2),goal(2)]>=-mc.AZ_m), return; end
+        mass = phase.massTaxi_kg+phase.payloadMass_kg;
+        thrust = p.thrust_N*p.nActiveThrusters*p.thrustEfficiency;
+        exhaust = 9.80665*p.Isp_s;
+        for extra = cfg.rpoExtraHomingHolds:-1:1
+            count = extra+1;
+            along = linspace(initial(2),goal(2),count+1);
+            states = zeros(6,count+1);
+            states(2,:) = along;
+            states(:,1) = initial;
+            states(:,end) = goal;
+            subtime = dt/count;
+            sw = cell(1,count);
+            for j = 1:count
+                a = states(:,j);
+                b = states(:,j+1);
+                step = min(5,cfg.sampleStep_s);
+                sw{j} = HCW_solver(a(1:3),a(4:6),b(1:3),b(4:6), ...
+                    subtime,n,max(21,ceil(subtime/step)+1));
+                q = sw{j};
+                % Bound both impulse durations using the fully loaded mass.
+                burn = -mass*exhaust*expm1(-[q.dv1,q.dv2]/exhaust)/thrust;
+                radius = vecnorm(q.trajectory(1:3,:));
+                stopDistance = mc.brakingSafetyFactor*max(q.closingSpeed,0).^2/(2*thrust/mass);
+                valid = q.ok && min(radius)>mc.AZ_m && ...
+                    max(q.maxRelativeSpeed,norm(b(4:6)))<=mc.maxSpeed_homing1_mps && ...
+                    FABER_path_clearance(q.trajectory(1:3,:),hazards)>0 && ...
+                    all(burn<=mc.maxBurnDuration_s) && ...
+                    sum(burn)<=subtime*mc.maxBurnFraction && ...
+                    (~mc.checkBrakingDistance || all(stopDistance+mc.brakingMargin_m<radius-mc.AZ_m));
+                if ~valid, sw{j} = []; break; end
+            end
+            if any(cellfun(@isempty,sw)), continue; end
+            counts = [height(events),numel(paths),height(holds),height(issues)];
+            beforeDV = recoveryDV;
+            t = time;
+            cost = 0;
+            for j = 1:count
+                a = states(:,j);
+                q = sw{j};
+                label = leg+" Homing 1 stage "+j+" of "+count;
+                [t,safe] = movement(veh,label,mode,t,subtime,q.trajectory,a,chief,n, ...
+                    rpoBounds(hazards,a),leg,false,true,q.dvTotal,0);
+                if ~safe, break; end
+                cost = cost+q.dvTotal;
+            end
+            if safe
+                finish = t;
+                exponent = (cost-r.dvPhase(1))/exhaust;
+                ok = true;
+                return;
+            end
+            events = events(1:counts(1),:);
+            paths = paths(1:counts(2),1);
+            holds = holds(1:counts(3),:);
+            issues = issues(1:counts(4),:);
+            recoveryDV = beforeDV;
         end
     end
 

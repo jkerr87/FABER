@@ -1,10 +1,13 @@
-function [disposalResults, burnResults, fig] = PassiveDisposal(Cd, mass_kg, areaTest_m2)
+function [disposalResults, burnResults, fig] = PassiveDisposal(Cd, mass_kg, areaTest_m2, altitude_km, showOutput, cutoff_km)
 %PASSIVEDISPOSAL Estimate drag-only and burn-assisted orbital disposal.
 % Inputs:
 %   Cd          - Positive drag coefficient [-].
 %   mass_kg     - Positive disposal mass, including residuals [kg].
 %   areaTest_m2 - Positive scalar or vector of projected drag areas [m^2].
 %                 Each area is an alternative for the same mass and Cd.
+%   altitude_km - Optional circular release altitude. Empty uses PM2 cases.
+%   showOutput  - Optional display and plot flag, true by default.
+%   cutoff_km   - Optional decay cutoff (default 160 km).
 % Outputs:
 %   disposalResults - Minimum area for five-year decay and natural decay
 %                     time for each orbit, area and density profile.
@@ -35,11 +38,20 @@ areaTest_m2 = sort(full(double(areaTest_m2(:))));
 orbit = ["ISS-like low"; "ISS-like nominal"; "ISS-like high"; ...
          "SSO low"; "SSO nominal"; "SSO high"];
 hStart = [389.78; 457.25; 524.72; 607.28; 680.12; 752.96];  % [km]
+if nargin>=4 && ~isempty(altitude_km)
+    validateattributes(altitude_km,{'numeric'},{'scalar','real','finite','>=',160,'<=',760});
+    hStart = double(altitude_km);
+    orbit = "Configured circular orbit";
+end
+if nargin<5, showOutput = true; end
+if nargin<6, cutoff_km = 160; end
+validateattributes(cutoff_km,{'numeric'},{'scalar','real','finite','>=',160,'<',min(hStart)});
+fig = [];
 profile = ["Moderate"; "Low"];
 
 mu = 3.986004418e14;       % Earth's gravitational parameter [m^3/s^2]
 Re = 6378137;              % Earth radius [m]
-hStop = 160;               % Numerical decay cutoff [km]
+hStop = cutoff_km;               % Numerical decay cutoff [km]
 limitYears = 5;            % Provisional time limit from release [years]
 secPerYear = 365.25 * 86400;
 limitSec = limitYears * secPerYear;
@@ -121,7 +133,7 @@ disposalResults = table(orbit(rowOrbit), hStart(rowOrbit), ...
     'VariableNames', {'Orbit', 'Altitude_km', 'MinArea_moderate_m2', ...
     'MinArea_low_m2', 'Area_m2', 'NaturalDecay_moderate_years', ...
     'NaturalDecay_low_years'});
-disp(disposalResults)
+if showOutput, disp(disposalResults); end
 
 %% 3. Disposal after one tangential retrograde burn
 tolKm = 0.1;  % Perigee search tolerance [km]
@@ -174,9 +186,10 @@ burnResults = table(orbit(rowOrbit(:)), hStart(rowOrbit(:)), ...
     dv(:), decayYears(:), 'VariableNames', ...
     {'Orbit', 'Altitude_km', 'Activity', 'Area_m2', 'Perigee_km', ...
      'DeltaV_m_s', 'Decay_years'});
-disp(burnResults)
+if showOutput, disp(burnResults); end
 
 %% 4. Plot the insertion DeltaV for both density profiles
+if ~showOutput, return; end
 fig = figure('Name', 'Disposal analysis');
 tiledlayout(1, 2);
 for j = 1:nProfile

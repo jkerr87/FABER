@@ -22,6 +22,14 @@ mcCfg.methodsC2 = {'GeneralHCW'};
 mcCfg.gateModes = {'FlyThrough'};
 mcCfg.homing1_min = [30 100];
 mcCfg.maxBurnFraction = 0.10;
+% Older saved Phase A configurations inherit the standalone screen settings.
+input = ["rpoClientGeometry","rpoAtlanteGeometry","rpoTerminalCorridorHalfWidth_m", ...
+    "rpoMaxPropellantCycle_kg","rpoMaxDVPerCycle_mps","rpoMaxBurnDuration_s","rpoMaxPeakAccel_mps2"];
+setting = ["clientGeometry","hostGeometry","terminalCorridorHalfWidth_m", ...
+    "maxPropellantCycle_kg","maxDV_perCycle_mps","maxBurnDuration_s","maxPeakAccel_mps2"];
+for j = 1:numel(input)
+    if isfield(cfg,input(j)), mcCfg.(setting(j)) = cfg.(input(j)); end
+end
 
 % Deduct outbound far-field propellant before sizing the client approach.
 outboundDV = norm(outbound.departureBurn_mps)+norm(outbound.arrivalBurn_mps);

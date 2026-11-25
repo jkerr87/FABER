@@ -3,6 +3,9 @@ function transfer = FABER_lambert_handoff(mu,Re,departureECI,chiefAtTime, ...
 % Search two-body Lambert arcs, then independently verify the chosen endpoint.
 % Inputs and outputs use m, m/s and s except mu, Re and perigee (km units).
 taxi = departureECI(:)/1000;
+% Match the departure orbit's direction, including retrograde SSO cases.
+angularMomentum = cross(taxi(1:3),taxi(4:6));
+orbitType = double(angularMomentum(3)<0);
 validateattributes(rev,{'numeric'},{'scalar','integer','nonnegative','finite'});
 if isempty(times)
     times = period*(rev+(0.15:0.05:0.85));
@@ -20,7 +23,7 @@ for dt = times(:)'
     chief = chiefAtTime(dt);
     gate = FABER_relative_state(chief,gateLVLH,'lvlhToEci')/1000;
     for branch = 0:double(rev>0)
-        [pAxis,p,e,err,vi,vf] = lambertMR(taxi(1:3)',gate(1:3)',dt,mu,0,rev,branch,0);
+        [pAxis,p,e,err,vi,vf] = lambertMR(taxi(1:3)',gate(1:3)',dt,mu,orbitType,rev,branch,0);
         if err~=0 || ~all(isfinite([pAxis p e vi(:)' vf(:)']))
             continue
         end
