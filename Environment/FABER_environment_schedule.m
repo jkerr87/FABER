@@ -506,7 +506,8 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         mc = budget.RPO_MC.cfg;
         p = FABER_RPO_phase_propulsion(mc,1);
         if ~isempty(p.thrusterDirections_LVLH) || ~p.enablePropulsionConstraints || ...
-                isfinite(mc.maxDV_perCycle_mps) || isfinite(mc.maxPropellantCycle_kg)
+                isfinite(mc.maxDV_perCycle_mps) || isfinite(mc.maxPropellantCycle_kg) || ...
+                isfinite(mc.maxPeakAccel_mps2)
             return;
         end
         if leg=="Client"
