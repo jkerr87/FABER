@@ -12,7 +12,9 @@ if nargin<2, cfg=struct(); end
 cfg = inputs(cfg,budget);
 mu = 1e9*astroConstants(13);
 Re = 1000*astroConstants(23);
-solar = FABER_environment_solar(cfg.epochUTC,cfg.maxDays,cfg.useToolbox);
+gmatCluster = "";
+if cfg.useGMAT, gmatCluster = cfg.cluster; end
+solar = FABER_environment_solar(cfg.epochUTC,cfg.maxDays,cfg.useToolbox,gmatCluster);
 
 % Preserve the unretimed Phase A reference alongside the gated schedule.
 reference = FABER_environment_schedule(budget,cfg,solar,mu,Re,false);
@@ -20,7 +22,11 @@ plan = FABER_environment_schedule(budget,cfg,solar,mu,Re,true);
 planning = struct('Candidates',0,'Diagnostic',"",'SelectedTrial',NaN,'UsedAlternate',false,'DepartureDelay_min',0,'DepartureTrials',0);
 departureBudget = budget;
 scheduleCfg = cfg;
-if cfg.replanSunlightRPO && any(plan.retrievalSummary.Status~="Delivered")
+sweep = table();
+if ~isempty(cfg.sweepHoldStrategies)
+    [plan,departureBudget,scheduleCfg,sweep,planning] = ...
+        sweepSchedules(budget,cfg,solar,mu,Re,plan,planning);
+elseif cfg.replanSunlightRPO && any(plan.retrievalSummary.Status~="Delivered")
     [screen,diagnostic] = FABER_environment_rpo_candidates(budget,cfg,mu/1e9,Re/1000);
     planning.Candidates = diagnostic.Candidates;
     planning.Diagnostic = diagnostic.Diagnostic;
@@ -41,7 +47,7 @@ if cfg.replanSunlightRPO && any(plan.retrievalSummary.Status~="Delivered")
         end
     end
 end
-if any(plan.retrievalSummary.Status~="Delivered") && ...
+if isempty(sweep) && any(plan.retrievalSummary.Status~="Delivered") && ...
         any(plan.issues.Vehicle=="Taxi" & (contains(plan.issues.Reason,"sunlight", ...
         'IgnoreCase',true) | contains(plan.issues.Reason,"eclipse",'IgnoreCase',true)))
     best = rpoProgress(plan);
@@ -75,6 +81,9 @@ if cfg.chargeAsNeeded && ~isempty(plan.assemblySorties)
     end
 end
 cfg.assemblyCharge_min = scheduleCfg.assemblyCharge_min;
+cfg.taxiInitialWait_s = scheduleCfg.taxiInitialWait_s;
+cfg.rpoExtraHomingHolds = scheduleCfg.rpoExtraHomingHolds;
+cfg.assemblyExtraHolds = scheduleCfg.assemblyExtraHolds;
 [edges,mid] = sampleTimes(plan,cfg.sampleStep_s);
 [states,uses,labels] = sampledTracks(plan,mid,names);
 [frac,aspect,beta] = lighting(solar,mid,states,cfg,Re);
@@ -118,9 +127,15 @@ out = struct('options',cfg,'lightingSource',solar.source,'toolboxDiagnostic',too
     'referenceRetrievalSummary',retrievalUTC(reference.retrievalSummary,cfg.epochUTC), ...
     'retrievalArcs',{plan.retrievalArcs}, ...
         'completedAssemblyModules',plan.completedModules,'assemblySorties',plan.assemblySorties, ...
+    'assemblyHoldPoints',plan.assemblyHoldPoints, ...
+    'assemblyHoldKOZ_m',plan.assemblyHoldKOZ_m, ...
     'rpoPlanning',planning, ...
     'assemblyReferencePaths',{assemblyPaths(budget,cfg.assemblyModuleIndices)});
+out.gmatEclipseIntervals = solar.gmatEclipseIntervals;
+out.scheduleSweep = sweep;
 out.openItems.UTC = cfg.epochUTC+seconds(out.openItems.Epoch_s);
+out.assemblyHoldPoints.ArrivalUTC = cfg.epochUTC+seconds(out.assemblyHoldPoints.Arrival_s);
+out.assemblyHoldPoints.RequiredKOZ_m = repmat(plan.assemblyHoldKOZ_m,height(out.assemblyHoldPoints),1);
 out.scheduleReady = isempty(plan.issues) && ~any(scheduledViolations,'all');
 out.epsReady = all(epsSummary.Pass);
 out.turnaroundReady = all(epsSummary.EndTargetPass);
@@ -184,6 +199,85 @@ for i = indices(:)'
 end
 end
 
+function [best,selected,settings,trials,planning] = sweepSchedules(budget,cfg,solar,mu,Re,best,planning)
+fprintf('Screening %d Monte Carlo draws for alternate RPO paths...\n',cfg.sunlightRpoTrials);
+[screen,diagnostic] = FABER_environment_rpo_candidates(budget,cfg,mu/1e9,Re/1000);
+planning.Candidates = diagnostic.Candidates;
+planning.Diagnostic = diagnostic.Diagnostic;
+ids = 0;
+if diagnostic.Candidates>0
+    alternates = diagnostic.CandidateIds(1:min(cfg.sunlightRpoSearchLimit,diagnostic.Candidates));
+    ids = [ids;alternates(:)];
+end
+delays = cfg.taxiDepartureSearch_min(:);
+strategies = cfg.sweepHoldStrategies;
+n = numel(ids)*numel(delays)*size(strategies,1);
+fprintf('Scheduling %d combinations across %d hold strategies...\n',n,size(strategies,1));
+rows = nan(n,12);
+reason = strings(n,1);
+selected = budget;
+settings = cfg;
+bestProgress = -inf;
+bestDV = inf;
+bestEnd = inf;
+bestRow = 0;
+row = 0;
+for strategy = 1:size(strategies,1)
+    for candidate = 1:numel(ids)
+        fprintf('Strategy %d/%d, path %d/%d (%d/%d combinations completed)\n', ...
+            strategy,size(strategies,1),candidate,numel(ids),row,n);
+        trialBudget = budget;
+        if ids(candidate)>0
+            trialBudget = screen;
+            trialBudget.RPO_MC.SelectedCycle = ids(candidate);
+        end
+        for departure = 1:numel(delays)
+            trial = cfg;
+            trial.rpoExtraHomingHolds = strategies(strategy,1);
+            trial.assemblyExtraHolds = strategies(strategy,2);
+            trial.taxiInitialWait_s = delays(departure)*60;
+            p = FABER_environment_schedule(trialBudget,trial,solar,mu,Re,true);
+            delivered = nnz(p.retrievalSummary.Status=="Delivered");
+            installed = numel(p.completedModules);
+            accepted = isempty(p.issues) && delivered==height(p.retrievalSummary) && ...
+                installed==numel(cfg.assemblyModuleIndices);
+            e = p.events;
+            taxiDV = sum(e.DeltaV_mps(e.Vehicle=="Taxi"));
+            kikiDV = sum(e.DeltaV_mps(startsWith(e.Vehicle,"Kiki")));
+            dv = taxiDV+kikiDV;
+            finish = max([0;e.End_s])/60;
+            row = row+1;
+            rows(row,:) = [strategy,candidate,ids(candidate),departure,delays(departure), ...
+                delivered,installed,accepted,taxiDV,kikiDV,finish,height(p.holds)];
+            if ~isempty(p.issues), reason(row) = p.issues.Activity(1)+": "+p.issues.Reason(1); end
+            progress = 1e6*accepted+100*rpoProgress(p)+installed;
+            if progress>bestProgress || (progress==bestProgress && ...
+                    (dv<bestDV || (dv==bestDV && finish<bestEnd)))
+                best = p;
+                selected = trialBudget;
+                settings = trial;
+                bestProgress = progress;
+                bestDV = dv;
+                bestEnd = finish;
+                bestRow = row;
+            end
+        end
+    end
+end
+trials = array2table(rows,'VariableNames',{'Strategy','CandidateRank','CandidateId', ...
+    'DepartureRank','DepartureDelay_min','Delivered','Installed','ScheduleAccepted', ...
+    'TaxiDV_mps','KikiFleetDV_mps','Finish_min','HoldRecords'});
+trials.ScheduleAccepted = logical(trials.ScheduleAccepted);
+trials.TaxiExtraHomingHolds = strategies(trials.Strategy,1);
+trials.AssemblyExtraHolds = strategies(trials.Strategy,2);
+trials.FirstIssue = reason;
+trials.Selected = (1:n)'==bestRow;
+planning.SelectedTrial = trials.CandidateId(bestRow);
+planning.UsedAlternate = planning.SelectedTrial>0;
+planning.DepartureDelay_min = trials.DepartureDelay_min(bestRow);
+planning.DepartureTrials = n;
+end
+
 function score = rpoProgress(plan)
 % Prefer a completed retrieval. Otherwise retain the furthest safely
 % scheduled phase, independent of the number of standby intervals.
@@ -199,10 +293,12 @@ end
 
 function cfg = inputs(given,budget)
 cfg = struct('epochUTC',datetime(2038,1,1,'TimeZone','UTC'), ...
-    'useToolbox',true,'sampleStep_s',30,'searchStep_s',30,'sunGuard_s',60, ...
-    'maxWait_s',6*3600,'rpoExtraHomingHolds',0,'assemblyDepartureSearchStep_s',900, ...
-    'taxiDepartureSearch_min',[15 30 45 60],'taxiInitialWait_s',0,'maxDays',21,'aspectAxisLVLH',[0;1;0], ...
+    'useToolbox',true,'useGMAT',false,'sampleStep_s',30,'searchStep_s',30,'sunGuard_s',60, ...
+    'maxWait_s',6*3600,'assemblyExtraHolds',2,'assemblyHoldSublegMax_min',40,'rpoExtraHomingHolds',0,'assemblyDepartureSearchStep_s',900, ...
+    'taxiDepartureSearch_min',[15 30 45 60],'sweepHoldStrategies',zeros(0,2), ...
+    'taxiInitialWait_s',0,'maxDays',21,'aspectAxisLVLH',[0;1;0], ...
     'sunRequiredFraction',1-1e-8,'rpoHoldKeepOut_m',30,'assemblyHoldKeepOut_m',30, ...
+    'assemblyHoldKOZFactor',1, ...
     'replanSunlightRPO',true,'rpoEntryHoldDistance_m',2000,'sunlightRpoTrials',30, ...
     'sunlightRpoSearchLimit',10,'sunlightRpoMaxTransfer_min',52, ...
     'sunlightRpoMaxClosing_min',22,'sunlightRpoMaxFinal_min',15, ...
@@ -211,7 +307,7 @@ cfg = struct('epochUTC',datetime(2038,1,1,'TimeZone','UTC'), ...
     'holdContinuationVelocity_mps',0.001,'recoveryTime_s',600,'recoveryIsp_s',293, ...
      'maxRecoveryDV_mps',1,'maxRecoverySpeed_mps',0.3, ...
     'clientHoldGeometry',struct(),'atlanteHoldGeometry',struct(),'assemblyHoldGeometry',struct(), ...
-    'assemblyModuleIndices',1,'preloadedModules',0,'modulesPerRetrieval',1, ...
+    'assemblyModuleIndices',1,'assemblyTimelineDetails',false,'preloadedModules',0,'modulesPerRetrieval',1, ...
     'retrievals',struct([]),'taxiDeparture_min',12,'taxiDryMass_kg',NaN, ...
      'assemblyPair',[1 2],'captureRequiresSun',true,'captureActive_min',NaN, ...
     'installationRequiresSun',false, ...
@@ -235,6 +331,13 @@ end
 cfg.epochUTC.TimeZone = 'UTC';
 assert(isscalar(cfg.epochUTC) && ~isnat(cfg.epochUTC) && year(cfg.epochUTC)>=2038,'Supply an epoch in 2038 or later.');
 cfg.cluster = upper(string(cfg.cluster));
+if ~isempty(cfg.sweepHoldStrategies)
+    validateattributes(cfg.sweepHoldStrategies,{'numeric'}, ...
+        {'2d','ncols',2,'integer','nonnegative','finite'});
+    assert(all(cfg.sweepHoldStrategies(:,1)<=3) && all(cfg.sweepHoldStrategies(:,2)<=3), ...
+        'Use up to three additional holds per leg in the sweep.');
+    assert(~isempty(cfg.taxiDepartureSearch_min),'Supply departure delays for the schedule sweep.');
+end
 assert(isscalar(cfg.cluster) && any(cfg.cluster==["ISS","SSO"]),'Cluster must be ISS or SSO.');
 ix = 1+(cfg.cluster=="SSO");
 taxi = [529 539]; tanker = [667 405];
@@ -276,13 +379,16 @@ for f = ["preloadedModules","modulesPerRetrieval"]
 end
 validateattributes(cfg.taxiInitialWait_s,{'numeric'}, ...
     {'scalar','real','finite','nonnegative','<',cfg.maxDays*86400});
+validateattributes(cfg.assemblyExtraHolds,{'numeric'},{'scalar','integer','nonnegative','<=',2});
+validateattributes(cfg.assemblyHoldKOZFactor,{'numeric'},{'scalar','real','finite','>=',1});
+validateattributes(cfg.assemblyHoldSublegMax_min,{'numeric'},{'scalar','real','finite','>=',5});
 validateattributes(cfg.rpoExtraHomingHolds,{'numeric'}, ...
     {'scalar','integer','nonnegative','<=',3});
 validateattributes(cfg.assemblyDepartureSearchStep_s,{'numeric'}, ...
     {'scalar','real','finite','positive'});
 if ~isempty(cfg.taxiDepartureSearch_min)
     validateattributes(cfg.taxiDepartureSearch_min,{'numeric'}, ...
-        {'vector','real','finite','positive','<',cfg.maxDays*1440});
+        {'vector','real','finite','nonnegative','<',cfg.maxDays*1440});
 end
 validateattributes(cfg.taxiDeparture_min,{'numeric'},{'scalar','finite','positive'});
 validateattributes(cfg.taxiDryMass_kg,{'numeric'},{'scalar','real'});
@@ -571,10 +677,10 @@ function saveOutputs(out)
 folder = out.options.outputFolder;
 if ~isfolder(folder), mkdir(folder); end
 fields = ["events","links","holds","openItems","lightingTrace","lightingSummary", ...
-    "eclipseIntervals","toolboxEclipseIntervals","referenceEvents","referenceLightingTrace", ...
+    "eclipseIntervals","toolboxEclipseIntervals","gmatEclipseIntervals","referenceEvents","referenceLightingTrace", ...
     "epsSummary","dutyCycle", ...
     "chargeSummary","batteryLifetime","batteryCycles","batteryHistogram", ...
-    "retrievalSummary","referenceRetrievalSummary","assemblySorties"];
+    "retrievalSummary","referenceRetrievalSummary","assemblySorties","assemblyHoldPoints"];
 for f=fields
     if width(out.(f))>0
         writetable(out.(f),fullfile(folder,"Environment_"+f+".csv"));

@@ -474,6 +474,8 @@ for j = 1:numel(vehicleNames)
     azViolations = nan(2,1);
     relativeStatus = 'Open';
     if cfg.runAnnualSK
+        fprintf('Computing annual relative stationkeeping for %s relative to %s...\n', ...
+            veh,referenceName);
         relativeSK.(veh) = run_FABER_Taxi_idle_SK(parking,reference,relativeOptions);
         relAnnual = relativeSK.(veh).annualDV_mps;
         relRange = relativeSK.(veh).summary.MinRange_m;

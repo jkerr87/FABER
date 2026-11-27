@@ -1,12 +1,57 @@
 function [window,tabs] = FABER_environment_plots(out,plan,reference,solar,names,Re)
 % Overlay illumination on the reference geometry and show scheduled EPS use.
-cfg = out.options;
 window = figure('Name','FABER Environment','NumberTitle','off', ...
     'WindowStyle','normal','Visible','off','Position',[100 100 1150 710]);
 theme(window,'light');
 group = uitabgroup(window,'Units','normalized','Position',[0 0 1 1]);
+if nargin==1
+    names = ["Taxi","Atlante","Kiki 1","Kiki 2","Rango 1","Rango 2"];
+    edges = unique([0;out.events.Start_s;out.events.End_s])/60;
+    out.eps.t = edges;
+    out.eps.mode = zeros(numel(edges)-1,numel(names));
+    issues = table('Size',[0 2],'VariableTypes',{'string','double'}, ...
+        'VariableNames',{'Vehicle','Epoch_s'});
+    [categories,keys,colors] = timelineCategories(out,names);
+    ops = tabAxes(group,"Mission duty cycle","Environment_EPS_Duty_Cycle");
+    timelinePlot(ops,edges,categories,keys,colors,names,issues,[0 edges(end)]);
+    for delivery = 1:numel(out.handover_min)
+        xline(ops,out.handover_min(delivery)/60,':', ...
+            "Delivery "+delivery,'HandleVisibility','off');
+    end
+    for module = unique(out.roundTrips.Module)'
+        trips = out.roundTrips(out.roundTrips.Module==module,:);
+        ax = tabAxes(group,"Module "+module+" duty cycle", ...
+            "Environment_Assembly_Duty_Cycle_"+module);
+        shown = height(trips);
+        rows = find(out.roundTrips.Module==module);
+        finish = max([trips.BerthEnd_min(shown);trips.InstallationEnd_min(shown); ...
+            out.charging.RechargeEnd_min(ismember(out.charging.TripIndex,rows))]);
+        timelinePlot(ax,edges,categories,keys,colors,names,issues,[trips.Start_min(1),finish]);
+        subtitle(ax,sprintf('%d trips | %.2f min installation per trip', ...
+            shown,trips.InstallationEnd_min(1)-trips.InstallationStart_min(1)));
+        host = out.charging(ismember(out.charging.TripIndex,rows) & ...
+            out.charging.Location=="Host structure",:);
+        if ~isempty(host)
+            [~,first] = min(host.ChargeStart_min);
+            q = host(first,:);
+            chargeAx = tabAxes(group,"Module "+module+" host charge", ...
+                "Environment_Assembly_Host_Charge_"+module);
+            timelinePlot(chargeAx,edges,categories,keys,colors,names,issues, ...
+                [max(0,q.ChargeStart_min-15),min(edges(end),q.RechargeEnd_min+15)]);
+            subtitle(chargeAx,q.Sender+" supplies "+q.Receiver+" at the host");
+        end
+    end
+    subtitle(ops,out.season+" activity durations replayed for each round trip");
+    tabs = [ops.Parent;group.Children(group.Children~=ops.Parent)];
+    group.SelectedTab = ops.Parent;
+    window.Visible = get(groot,'DefaultFigureVisible');
+    return;
+end
+
+cfg = out.options;
 trajectoryTabs(group,reference,reference,out,solar,cfg,Re,"Reference");
 trajectoryTabs(group,plan,reference,out,solar,cfg,Re,"Scheduled");
+trajectoryTimeTabs(group,plan,solar,cfg,Re);
 sun = tabAxes(group,"Sunlight and eclipse","Environment_Sunlight_Eclipse");
 angle = tabAxes(group,"Sun aspect angle","Environment_Sun_Aspect");
 beta = tabAxes(group,"Orbit beta angle","Environment_Orbit_Beta");
@@ -92,6 +137,25 @@ if ~isempty(cfg.assemblyModuleIndices)
             'Interpreter','none');
     end
 end
+if cfg.assemblyTimelineDetails
+    for j = 1:height(out.assemblySorties)
+        sortie = out.assemblySorties(j,:);
+        name = "Assembly "+sortie.ModuleIndex;
+        ax = tabAxes(group,name+" duty cycle","Environment_Assembly_Duty_Cycle_"+sortie.ModuleIndex);
+        vehicles = [1,sortie.Pair+2,sortie.Pair+4];
+        viewMinutes = [max(0,sortie.LoadStart_s/60-10), ...
+            min(edges(end),sortie.BerthEnd_s/60+10)];
+        timelinePlot(ax,edges,categories(:,vehicles),keys,colors,names(vehicles), ...
+            out.openItems,viewMinutes);
+        gates = out.assemblyHoldPoints(startsWith(out.assemblyHoldPoints.Relocation,name+" "),:);
+        for k = 1:height(gates)
+            label = "Outbound hold";
+            if endsWith(gates.Relocation(k),"unloaded"), label = "Return hold"; end
+            xline(ax,gates.Arrival_s(k)/3600,':',label,'HandleVisibility','off');
+        end
+        subtitle(ax,sprintf('Free-flight hold buffer: %g m',out.assemblyHoldKOZ_m));
+    end
+end
 allocation(share,edges,categories,keys,colors,names);
 plot(soc,out.eps.t/60,out.eps.soc,'LineWidth',1.2);
 yline(soc,65,'k:','PM4 minimum SoC');
@@ -148,6 +212,84 @@ for k=1:4
 end
 end
 
+function trajectoryTimeTabs(group,plan,solar,cfg,Re)
+paths = [plan.paths{:}];
+if isempty(paths), return; end
+taxi = paths(string({paths.vehicle})=="Taxi");
+labels = ["Outbound far field","Client RPO","Return far field","Atlante RPO"];
+tags = ["Outbound_Far_Field","Client_RPO","Return_Far_Field","Atlante_RPO"];
+palette = [1 .96 .79; .88 .85 .93; .73 .77 .87];
+for trip = 1:height(plan.retrievalSummary)
+    p = taxi([taxi.retrieval]==trip & [taxi.stop]>[taxi.start]);
+    if isempty(p), continue; end
+    returning = string({p.label})=="Return Lambert";
+    hostEntry = min([Inf,p(returning).stop]);
+    selected = {string({p.label})=="Outbound Lambert", string({p.leg})=="Client", ...
+        returning, string({p.leg})=="Atlante" & [p.start]>=hostEntry};
+    for leg = 1:numel(labels)
+        segments = p(selected{leg});
+        if isempty(segments), continue; end
+        ax = tabAxes(group,"2D | "+plan.retrievalSummary.Module(trip)+" | "+labels(leg), ...
+            "Environment_2D_"+tags(leg)+"_"+trip);
+        origin = min([segments.start]);
+        far = leg==1 || leg==3;
+        stripes = zeros(0,3);
+        curves = gobjects(0);
+        for s = segments
+            t = linspace(s.start,s.stop,max(2,ceil((s.stop-s.start)/cfg.sampleStep_s)+1));
+            mid = (t(1:end-1)+t(2:end))/2;
+            f = FABER_environment_light(solar,mid,s.state(mid),cfg.aspectAxisLVLH,Re);
+            light = 1+(f<1-1e-8)+(f<=1e-9);
+            starts = [1 find(diff(light)~=0)+1];
+            stops = [starts(2:end) numel(t)];
+            minutesFromStart = (t-origin)/60;
+            stripes = [stripes; minutesFromStart(starts)',minutesFromStart(stops)',light(starts)']; %#ok<AGROW>
+            x = s.state(t);
+            if far
+                data = (vecnorm(x(1:3,:))-Re)/1000;
+            else
+                chief = plan.atlante(t);
+                if leg==2, chief = s.clientChief(t); end
+                data = relativeComponents(x,chief);
+            end
+            ax.ColorOrderIndex = 1;
+            curves = plot(ax,minutesFromStart(:),data.','LineWidth',1.4);
+        end
+        yl = ylim(ax);
+        keys = gobjects(3,1);
+        for code = 1:3
+            a = stripes(stripes(:,3)==code,1)';
+            b = stripes(stripes(:,3)==code,2)';
+            if ~isempty(a)
+                band = patch(ax,[a;b;b;a],repmat(yl([1 1 2 2])',1,numel(a)), ...
+                    palette(code,:),'EdgeColor','none','HandleVisibility','off');
+                uistack(band,'bottom');
+            end
+            keys(code) = patch(ax,nan,nan,palette(code,:),'EdgeColor','none');
+        end
+        xlabel(ax,'Minutes since leg start');
+        if far
+            ylabel(ax,'Altitude above spherical Earth (km)');
+            names = "Altitude";
+        else
+            ylabel(ax,'Relative position (m)');
+            names = ["Along track","Radial","Cross track"];
+        end
+        legend(ax,[curves(:);keys],[names,"Sunlight","Penumbra","Umbra"],'Location','best');
+    end
+end
+end
+
+function xyz = relativeComponents(x,chief)
+r = chief(1:3,:);
+radial = r./vecnorm(r);
+normal = cross(r,chief(4:6,:),1);
+normal = normal./vecnorm(normal);
+transverse = cross(normal,radial,1);
+delta = x(1:3,:)-r;
+xyz = [sum(transverse.*delta,1);sum(radial.*delta,1);sum(normal.*delta,1)];
+end
+
 function ax = tabAxes(group,name,tag)
 tab = uitab(group,'Title',name,'Tag',tag);
 ax = axes('Parent',tab,'Units','normalized');
@@ -186,13 +328,7 @@ for i=1:numel(plan.paths)
     else
         chief = plan.atlante(t);
         if k==2, chief=p.clientChief(t); end
-        r = chief(1:3,:);
-        radial = r./vecnorm(r);
-        normal = cross(r,chief(4:6,:),1);
-        normal = normal./vecnorm(normal);
-        transverse = cross(normal,radial,1);
-        delta = x(1:3,:)-r;
-        xyz = [sum(transverse.*delta,1);sum(radial.*delta,1);sum(normal.*delta,1)];
+        xyz = relativeComponents(x,chief);
     end
     starts = [1 find(diff(state)~=0)+1];
     ends = [starts(2:end) numel(t)];
@@ -211,6 +347,11 @@ keys = ["Standby","Far-field transit","Sunlit RPO","Eclipse hold","Other hold", 
 colors = [0.82 0.84 0.86;0.19 0.43 0.67;0.89 0.57 0.10;0.24 0.26 0.48; ...
     0.43 0.50 0.67;0.55 0.36 0.67;0.15 0.56 0.54;0.29 0.62 0.36; ...
     0.78 0.42 0.25;0.70 0.29 0.37];
+cadence = isfield(out,'roundTrips');
+if cadence
+    keys(end+1:end+3) = ["Rango charging via Kiki at host","RPO without sunlight gate","Attached standby"];
+    colors(end+1:end+3,:) = [0.04 0.43 0.29;0.73 0.48 0.18;0.60 0.68 0.75];
+end
 category = ones(size(out.eps.mode));
 mid = (out.eps.t(1:end-1)+out.eps.t(2:end))/2;
 for i=1:height(out.events)
@@ -233,10 +374,31 @@ for i=1:height(out.events)
         code=5;
     end
     if startsWith(name,"post-stop state open"), code=10; end
+    if cadence && code==1 && any(e.Mode==["K4l","K4e","T2","T5"])
+        code=12;
+    end
+    if cadence && code==1 && contains(name,"attached standby"), code=13; end
+    if cadence && code==1 && (e.Mode=="K2" || contains(name,"retained at atlante berth"))
+        code=6;
+    end
+    if cadence && contains(name,["at host charging rango","charging from kiki at host"])
+        code=11;
+    end
     category(k,v)=code;
     if code==5
-        light = out.lightingTrace.SunFraction(out.lightingTrace.Vehicle==names(v));
-        category(k & light<1-1e-8,v)=4;
+        if isfield(out,'lightingTrace')
+            light = out.lightingTrace.SunFraction(out.lightingTrace.Vehicle==names(v));
+            category(k & light<1-1e-8,v)=4;
+        elseif e.Eclipse_min>0
+            category(k,v)=4;
+        end
+    end
+end
+if cadence
+    host = out.charging(out.charging.Location=="Host structure",:);
+    for i = 1:height(host)
+        k = mid>=host.ChargeStart_min(i) & mid<host.RechargeEnd_min(i);
+        category(k,ismember(names,[host.Sender(i),host.Receiver(i)])) = 11;
     end
 end
 end
@@ -247,13 +409,13 @@ for v=1:numel(names)
     if isempty(modes), continue; end
     starts = [1;find(diff(modes)~=0)+1];
     stops = [starts(2:end);numel(edges)];
-    for j=1:numel(starts)
-        a = max(window(1),edges(starts(j)));
-        b = min(window(2),edges(stops(j)));
-        if b>a
-            patch(ax,[a b b a]/60,v+[-.32 -.32 .32 .32], ...
-                colors(modes(starts(j)),:),'EdgeColor','none','HandleVisibility','off');
-        end
+    a = max(window(1),edges(starts));
+    b = min(window(2),edges(stops));
+    for code=unique(modes(starts(b>a)))'
+        active = b>a & modes(starts)==code;
+        x = [a(active) b(active) b(active) a(active)]'/60;
+        y = repmat(v+[-.32;-.32;.32;.32],1,nnz(active));
+        patch(ax,x,y,colors(code,:),'EdgeColor','none','HandleVisibility','off');
     end
 end
 handle = gobjects(numel(keys)+1,1);

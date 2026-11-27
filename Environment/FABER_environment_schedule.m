@@ -108,18 +108,23 @@ allDelivered = height(delivered)==height(retrievalSummary);
 % Phase A loaded and unloaded path and explicit service operations.
 indices = cfg.assemblyModuleIndices(:)';
 completed = zeros(0,1);
+assemblyHoldPoints = table(strings(0,1),strings(0,1),zeros(0,1),zeros(0,1), ...
+    zeros(0,1),zeros(0,1),zeros(0,1),'VariableNames', ...
+    {'Vehicle','Relocation','Gate','Radial_m','AlongTrack_m','CrossTrack_m','Arrival_s'});
 safeStops = cell(0,1);
+assemblyHoldKOZ = max([30,cfg.assemblyHoldKeepOut_m, ...
+    cfg.assemblyHoldKOZFactor*budget.RPO_MC.cfg.KOZ_m]);
 sorties = table('Size',[0 5],'VariableTypes',repmat("double",1,5), ...
     'VariableNames',{'Queue','ModuleIndex','Pair','LoadStart_s','BerthEnd_s'});
 assemblyTime = 0;
 deliveries = cfg.preloadedModules+cumsum(delivered.CargoCount);
-for j=1:numel(indices)
-    moduleIndex = indices(j);
-    pair = cfg.assemblyPair(1+mod(j-1,numel(cfg.assemblyPair)));
+for job=1:numel(indices)
+    moduleIndex = indices(job);
+    pair = cfg.assemblyPair(1+mod(job-1,numel(cfg.assemblyPair)));
     kiki = "Kiki "+pair; rango = "Rango "+pair;
     r = budget.assemblyRelocations.bestRecords{moduleIndex};
-    if j>cfg.preloadedModules
-        delivery = find(deliveries>=j,1);
+    if job>cfg.preloadedModules
+        delivery = find(deliveries>=job,1);
         if isempty(delivery)
             block(kiki,"Assembly relocation "+moduleIndex,max(assemblyTime,taxiEnd), ...
                 "Cargo has not been handed over.");
@@ -135,7 +140,7 @@ for j=1:numel(indices)
     home = @(q) fixedLVLH(atlante,q,[r.outbound.source_m(:);zeros(3,1)]);
     site = @(q) fixedLVLH(atlante,q,[r.outbound.target_m(:);zeros(3,1)]);
     if cfg.chargeAsNeeded
-        [assemblyTime,ok] = prepareCharge(kiki,rango,tag,assemblyTime,home,cfg.assemblyCharge_min(j,:));
+        [assemblyTime,ok] = prepareCharge(kiki,rango,tag,assemblyTime,home,cfg.assemblyCharge_min(job,:));
         if ~ok, break; end
     end
     loadStart = assemblyTime;
@@ -144,7 +149,7 @@ for j=1:numel(indices)
     firstPath = numel(paths)+1;
     [assemblyTime,ok,departure] = reservedRelocation(kiki,tag+" loaded","K4l",r.outbound,assemblyTime);
     if ~ok
-        safeStops{end+1,1} = struct('kiki',kiki,'rango',rango,'t',assemblyTime,'state',home,'tag',tag);
+        rememberAttachedStop(kiki,rango,assemblyTime,home,tag,"Atlante","R8");
         break;
     end
     away{pair}(end+1,:) = [departure Inf];
@@ -152,13 +157,19 @@ for j=1:numel(indices)
         carryRango(firstPath,rango,tag+" retained delivery");
     end
     if cfg.retainRangoForRelocations
-        [assemblyTime,ok] = rangoTransfer(kiki,rango,tag+" deploy Rango",assemblyTime,site,tag);
-        if ~ok, break; end
+        [assemblyTime,ok] = rangoTransfer(kiki,rango,tag+" deploy Rango",assemblyTime,site,tag,"R8");
+        if ~ok
+            rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R8");
+            break;
+        end
     end
     if ~cfg.chargeAsNeeded
         [assemblyTime,ok] = operation(kiki,tag+" charge Rango","K6",assemblyTime, ...
             cfg.rangoCharge_min*60,site,tag,false,true);
-        if ~ok, break; end
+        if ~ok
+            rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R7");
+            break;
+        end
         if cfg.rangoCharge_min>0
             chargeStart = assemblyTime-cfg.rangoCharge_min*60;
             append(rango,tag+" receive charge","R5",chargeStart,assemblyTime,false,site,tag,0);
@@ -168,8 +179,16 @@ for j=1:numel(indices)
     handoverStart = assemblyTime;
     [assemblyTime,ok] = operation(kiki,tag+" handover to Rango","K5",assemblyTime, ...
         cfg.kikiHandover_min*60,site,tag,true,true);
-    if ~ok, break; end
+    if ~ok
+        rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R7");
+        break;
+    end
     if cfg.kikiHandover_min>0
+        serviceStart = assemblyTime-cfg.kikiHandover_min*60;
+        if serviceStart>handoverStart
+            append(rango,"Attached wait at assembly site before "+tag+" handover", ...
+                "R7",handoverStart,serviceStart,false,site,tag,0);
+        end
         append(rango,tag+" receive cargo","R2",assemblyTime-cfg.kikiHandover_min*60, ...
             assemblyTime,true,site,tag,0);
     elseif assemblyTime>handoverStart
@@ -177,29 +196,42 @@ for j=1:numel(indices)
     end
     [workEnd,ok] = operation(rango,tag+" installation","R4",assemblyTime, ...
         cfg.rangoAssembly_min*60,site,tag,cfg.installationRequiresSun,true);
-    if ~ok, break; end
+    if ~ok
+        rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R7");
+        break;
+    end
     if cfg.retainRangoForRelocations
         append(kiki,tag+" attached standby during installation","K11",assemblyTime,workEnd,false,site,tag,0);
-        [assemblyTime,ok] = rangoTransfer(kiki,rango,tag+" recover Rango",workEnd,site,tag);
-        if ~ok, break; end
+        [assemblyTime,ok] = rangoTransfer(kiki,rango,tag+" recover Rango",workEnd,site,tag,"R7");
+        if ~ok
+            rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R7");
+            break;
+        end
     end
     % Without the retained pair assumption, Kiki can return during installation.
     firstPath = numel(paths)+1;
     [assemblyTime,ok] = reservedRelocation(kiki,tag+" unloaded","K4e",r.returnTrip,assemblyTime);
     if ~ok
-        safeStops{end+1,1} = struct('kiki',kiki,'rango',rango,'t',assemblyTime,'state',site,'tag',tag);
+        rememberAttachedStop(kiki,rango,assemblyTime,site,tag,"assembly site","R8");
         break;
     end
     if cfg.retainRangoForRelocations
         carryRango(firstPath,rango,tag+" retained return");
     end
     if cfg.chargeAsNeeded
+        arrival = assemblyTime;
         [assemblyTime,ok] = operation(kiki,tag+" connect at Atlante","K2",assemblyTime, ...
             cfg.assemblyBerth_min*60,home,tag,false,true);
-        if ~ok, break; end
+        if ~ok
+            rememberAttachedStop(kiki,rango,arrival,home,tag,"Atlante","R8");
+            break;
+        end
+        if cfg.retainRangoForRelocations && assemblyTime>arrival
+            append(rango,tag+" retained at Atlante berth","R8",arrival,assemblyTime,false,home,tag,0);
+        end
     end
     away{pair}(end,2) = assemblyTime;
-    sorties(end+1,:) = {j,moduleIndex,pair,loadStart,assemblyTime};
+    sorties(end+1,:) = {job,moduleIndex,pair,loadStart,assemblyTime};
     if ~cfg.chargeAsNeeded
         chargeStart = assemblyTime;
         [assemblyTime,ok] = operation(kiki,tag+" recharge at Atlante","K7",assemblyTime, ...
@@ -253,10 +285,14 @@ knownStops = strings(0,1);
 for j=1:numel(safeStops)
     held = safeStops{j};
     knownStops(end+1,1) = held.kiki; %#ok<AGROW>
+    if cfg.retainRangoForRelocations
+        knownStops(end+1,1) = held.rango; %#ok<AGROW>
+    end
     if stop>held.t
-        append(held.kiki,"Attached wait at "+held.tag,"K11",held.t,stop,false,held.state,held.tag,0);
+        label = "Attached wait at "+held.location+" after "+held.tag;
+        append(held.kiki,label,"K11",held.t,stop,false,held.state,held.tag,0);
         if cfg.retainRangoForRelocations
-            append(held.rango,"Attached wait at "+held.tag,"R8",held.t,stop,false,held.state,held.tag,0);
+            append(held.rango,label,held.rangoMode,held.t,stop,false,held.state,held.tag,0);
         end
     end
 end
@@ -273,8 +309,8 @@ if cfg.dockedPairSupport, dockedPower(stop); end
 assert(stop<=cfg.maxDays*86400,'Study exceeds the configured solar ephemeris horizon.');
 plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, ...
     'issues',issues,'paths',{paths},'stop_s',stop,'atlante',atlante,'taxiPark',park, ...
-    'taxiEnd_s',taxiEnd,'taxiDocked',taxiDocked,'taxiBerth',taxiBerth,'completedModules',completed,'assemblySorties',sorties, ...
-    'returnLambert',returnPlan,'recoveryDV_mps',recoveryDV, ...
+    'taxiEnd_s',taxiEnd,'taxiDocked',taxiDocked,'taxiBerth',taxiBerth,'completedModules',completed,'assemblySorties',sorties,'assemblyHoldPoints',assemblyHoldPoints, ...
+    'returnLambert',returnPlan,'recoveryDV_mps',recoveryDV,'assemblyHoldKOZ_m',assemblyHoldKOZ, ...
     'retrievalSummary',retrievalSummary,'retrievalArcs',{retrievalArcs});
 
     function [finish,state,ok] = waitAtParking(time,dt)
@@ -585,58 +621,163 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
     function [finish,ok,departure] = reservedRelocation(veh,tag,mode,r,time)
         % Reserve all three legs and any intermediate holds before leaving
         % the attached location. Discard the ledger of a failed preview.
-        counts = [height(events),numel(paths),height(holds),height(issues)];
+        counts = [height(events),numel(paths),height(holds),height(issues),height(assemblyHoldPoints)];
         beforeDV = recoveryDV;
         departure = time;
         offsets = 0;
         if enforce
             offsets = 0:cfg.assemblyDepartureSearchStep_s:cfg.maxWait_s;
         end
+        n = sqrt(mu/(Re+1000*phase.h_target_km)^3);
+        % Protect the Atlante center and both modeled attachment interfaces.
+        % Attached waits bypass this free-flight screen in movement().
+        hazards = obstacle([zeros(3,1),r.source_m(:),r.target_m(:)], ...
+            0,cfg.assemblyHoldGeometry);
+        existingMargin = 0;
+        if isfield(hazards,'extraRadius_m'), existingMargin = hazards.extraRadius_m; end
+        % Apply the KOZ buffer from the surface of configured geometry.
+        hazards.extraRadius_m = existingMargin+assemblyHoldKOZ;
+        routes = {[]};
         failure = "";
-        for delay = offsets
-            if time+delay+(r.exitTOF_min+r.transferTOF_min+r.finalTOF_min)*60>cfg.maxDays*86400
-                break;
+        route = 1;
+        while route<=numel(routes)
+            stages = routes{route};
+            transit = r.transferTOF_min*60;
+            if ~isempty(stages), transit = sum([stages.duration]); end
+            for delay = offsets
+                if time+delay+transit+(r.exitTOF_min+r.finalTOF_min)*60>cfg.maxDays*86400
+                    break;
+                end
+                if delay>0
+                    x0 = [r.source_m(:);zeros(3,1)];
+                    append(veh,"Attached wait before "+tag,"K11",time,time+delay,false, ...
+                        @(q) fixedLVLH(atlante,q,x0),tag,0);
+                end
+                [finish,ok] = relocation(veh,tag,mode,r,time+delay,n,hazards,stages);
+                if ok
+                    first = find(events.Activity==tag+" departure" & events.Vehicle==veh,1,'last');
+                    departure = events.Start_s(first);
+                    if ~enforce || departure-time<=cfg.maxWait_s, return; end
+                    failure = "The departure lies beyond the configured wait limit.";
+                end
+                if failure=="" && height(issues)>counts(4)
+                    failure = issues.Activity(end)+" - "+issues.Reason(end);
+                end
+                events = events(1:counts(1),:);
+                paths = paths(1:counts(2),1);
+                holds = holds(1:counts(3),:);
+                issues = issues(1:counts(4),:);
+                assemblyHoldPoints = assemblyHoldPoints(1:counts(5),:);
+                recoveryDV = beforeDV;
             end
-            if delay>0
-                x0 = [r.source_m(:);zeros(3,1)];
-                append(veh,"Attached wait before "+tag,"K11",time,time+delay,false, ...
-                    @(q) fixedLVLH(atlante,q,x0),tag,0);
+            if route==1 && enforce && cfg.assemblyExtraHolds>0
+                routes = [routes assemblyHoldingRoutes(r,n,hazards)];
             end
-            [finish,ok] = relocation(veh,tag,mode,r,time+delay);
-            if ok
-                first = find(events.Activity==tag+" departure" & events.Vehicle==veh,1,'last');
-                departure = events.Start_s(first);
-                if ~enforce || departure-time<=cfg.maxWait_s, return; end
-                failure = "The departure lies beyond the configured wait limit.";
-            end
-            if failure=="" && height(issues)>counts(4)
-                failure = issues.Activity(end)+" - "+issues.Reason(end);
-            end
-            events = events(1:counts(1),:);
-            paths = paths(1:counts(2),1);
-            holds = holds(1:counts(3),:);
-            issues = issues(1:counts(4),:);
-            recoveryDV = beforeDV;
+            route = route+1;
         end
         finish = time;
         ok = false;
         block(veh,tag,time,"Stayed attached. No safe relocation schedule within the search horizon. "+failure);
     end
 
-    function [finish,ok] = relocation(veh,tag,transitMode,r,time)
-        finish = time; ok = true;
-        n = sqrt(mu/(Re+1000*phase.h_target_km)^3);
-        hazards = obstacle([r.source_m(:),r.target_m(:)],cfg.assemblyHoldKeepOut_m,cfg.assemblyHoldGeometry);
-        pathsHere = {r.exitPath,r.transferPath,r.finalPath};
-        minutes = [r.exitTOF_min,r.transferTOF_min,r.finalTOF_min];
-        cost = [r.exitDV_mps,r.transferDV_mps,r.finalDV_mps];
-        labels = [" departure"," gate transfer"," terminal arrival"];
-        for k=1:3
-            trace = pathsHere{k};
-            begin = [trace(1:3,1);zeros(3,1)];
-            [finish,ok] = movement(veh,tag+labels(k),transitMode,finish,minutes(k)*60, ...
-                trace,begin,atlante,n,hazards,tag,k==1,true,cost(k),0);
+    function [finish,ok] = relocation(veh,tag,mode,r,time,n,hazards,stages)
+        if isempty(stages)
+            transit = struct('trace',r.transferPath,'duration',r.transferTOF_min*60, ...
+                'dv',r.transferDV_mps);
+        else
+            transit = stages;
+        end
+        start = [r.exitPath(1:3,1);zeros(3,1)];
+        tail = 0;
+        if ~isempty(stages), tail=transit(1).duration; end
+        [finish,ok] = movement(veh,tag+" departure",mode,time,r.exitTOF_min*60, ...
+            r.exitPath,start,atlante,n,hazards,tag,true,true,r.exitDV_mps,tail);
+        if ~ok, return; end
+
+        for stageIndex = 1:numel(transit)
+            part = transit(stageIndex);
+            start = [part.trace(1:3,1);zeros(3,1)];
+            label = tag+" gate transfer";
+            tail = 0;
+            if ~isempty(stages)
+                label = label+" stage "+stageIndex+" of "+numel(transit);
+                if stageIndex==numel(transit), tail=r.finalTOF_min*60; end
+            end
+            [finish,ok] = movement(veh,label,mode,finish,part.duration,part.trace, ...
+                start,atlante,n,hazards,tag,false,isempty(stages) || stageIndex>1,part.dv,tail);
             if ~ok, return; end
+            if stageIndex<numel(transit)
+                gate = part.trace(1:3,end);
+                assemblyHoldPoints(end+1,:) = {veh,tag,stageIndex,gate(1),gate(2),gate(3),finish};
+            end
+        end
+        start = [r.finalPath(1:3,1);zeros(3,1)];
+        [finish,ok] = movement(veh,tag+" terminal arrival",mode,finish,r.finalTOF_min*60, ...
+            r.finalPath,start,atlante,n,hazards,tag,false,isempty(stages),r.finalDV_mps,0);
+    end
+
+    function routes = assemblyHoldingRoutes(r,n,hazards)
+        % Only add stationary V-bar states. Retain the two original
+        % endpoint RPO segments and the Phase A gate/speed constraints.
+        routes = {};
+        if ~isfield(budget.assemblyRelocations,'options'), return; end
+        limits = budget.assemblyRelocations.options;
+        if ~isempty(fieldnames(limits.pathGeometry)) && ...
+                ~isequal(limits.pathGeometry,cfg.assemblyHoldGeometry)
+            return;
+        end
+        if ~isfield(phase,'kikiTransferPropulsion'), return; end
+        propulsion = phase.kikiTransferPropulsion;
+        if isempty(fieldnames(propulsion)), return; end
+        mass = phase.massKiki_kg+phase.massRango_kg+phase.payloadMass_kg;
+        force = propulsion.nActiveThrusters*propulsion.thrust_N*propulsion.thrustEfficiency;
+        exhaust = 9.80665*propulsion.Isp_s;
+        a = r.transferPath(1:3,1);
+        b = r.transferPath(1:3,end);
+        center = (a(2)+b(2))/2;
+        directions = 1;
+        if b(2)<a(2), directions = -1; end
+        scores = zeros(0,2);
+        for count = 1:cfg.assemblyExtraHolds
+            for shift = [0,-40,40,-80,80,-120,120,-180,180]
+                stations = center+shift;
+                if count==2, stations = stations+directions*[-30 30]; end
+                gates = [zeros(1,count);stations;zeros(1,count)];
+                if FABER_path_clearance(gates,hazards)<=0, continue; end
+                points = [a,gates,b];
+                stages = struct('trace',{},'duration',{},'dv',{});
+                for sublegIndex = 1:count+1
+                    [stages(sublegIndex),ok] = checkedSubleg(points(:,sublegIndex),points(:,sublegIndex+1)); %#ok<AGROW>
+                    if ~ok, break; end
+                end
+                if ~ok || sum([stages.dv])>limits.maxTransferDV_mps, continue; end
+                routes{end+1} = stages; %#ok<AGROW>
+                scores(end+1,:) = [sum([stages.duration]),sum([stages.dv])]; %#ok<AGROW>
+            end
+        end
+        [~,order] = sortrows(scores,[1 2]);
+        routes = routes(order);
+
+        function [stage,ok] = checkedSubleg(from,to)
+            stage = struct('trace',[],'duration',NaN,'dv',NaN);
+            ok = false;
+            if norm(to-from)<1, return; end
+            for minutes = 5:5:cfg.assemblyHoldSublegMax_min
+                duration = minutes*60;
+                sol = HCW_solver(from,zeros(3,1),to,zeros(3,1),duration,n, ...
+                    max(21,ceil(duration/5)+1));
+                x = sol.trajectory(1:3,:);
+                burn = -mass*exhaust*expm1(-sol.dvTotal/exhaust)/force;
+                ok = sol.ok && sol.positionError<=1e-3 && sol.velocityError<=1e-6 && ...
+                    sol.maxRelativeSpeed<=limits.maxTransferSpeed_mps && ...
+                    min(vecnorm(x-r.source_m(:)))>=limits.gateDistance_m-1e-5 && ...
+                    min(vecnorm(x-r.target_m(:)))>=max(limits.gateDistance_m-1e-5,limits.minTargetRange_m) && ...
+                    FABER_path_clearance(x,cfg.assemblyHoldGeometry)>0 && burn<=0.10*duration;
+                if ok
+                    stage = struct('trace',sol.trajectory,'duration',duration,'dv',sol.dvTotal);
+                    return;
+                end
+            end
         end
     end
 
@@ -844,7 +985,7 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         assert(b>=a && b<=cfg.maxDays*86400,'Activity outside the study horizon.');
         events(end+1,:) = {veh,label,mode,a,b,sunRequired,dv,activeTrip};
         paths{end+1,1} = struct('vehicle',veh,'label',label,'leg',leg,'start',a,'stop',b, ...
-            'state',x,'sunRequired',sunRequired,'clientChief',clientChief);
+            'state',x,'sunRequired',sunRequired,'clientChief',clientChief,'retrieval',activeTrip);
     end
 
     function block(veh,label,t,why)
@@ -862,7 +1003,11 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         last = numel(paths);
         for i=first:last
             p = paths{i};
-            append(rango,label,"R8",p.start,p.stop,p.sunRequired,p.state,p.leg,0);
+            activity = label;
+            if startsWith(p.label,"Eclipse wait") || startsWith(p.label,"Attached wait")
+                activity = p.label+" (Rango retained)";
+            end
+            append(rango,activity,"R8",p.start,p.stop,p.sunRequired,p.state,p.leg,0);
         end
     end
 
@@ -890,10 +1035,20 @@ plan = struct('events',sortrows(events,'Start_s'),'links',links,'holds',holds, .
         end
     end
 
-    function [finish,ok] = rangoTransfer(kiki,rango,label,start,site,tag)
+    function rememberAttachedStop(kiki,rango,time,state,tag,location,rangoMode)
+        safeStops{end+1,1} = struct('kiki',kiki,'rango',rango,'t',time,'state',state, ...
+            'tag',tag,'location',location,'rangoMode',rangoMode);
+    end
+
+    function [finish,ok] = rangoTransfer(kiki,rango,label,start,site,tag,standby)
         [finish,ok] = operation(kiki,label,"K5",start,cfg.rangoTransfer_min*60,site,tag,true,true);
         if ok && cfg.rangoTransfer_min>0
-            append(rango,label,"R1",finish-cfg.rangoTransfer_min*60,finish,true,site,tag,0);
+            begin = finish-cfg.rangoTransfer_min*60;
+            if begin>start+1e-6
+                append(rango,"Attached wait at assembly site before "+label, ...
+                    standby,start,begin,false,site,tag,0);
+            end
+            append(rango,label,"R1",begin,finish,true,site,tag,0);
         end
     end
 
